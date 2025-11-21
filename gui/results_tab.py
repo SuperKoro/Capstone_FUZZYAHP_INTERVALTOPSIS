@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTabl
                              QTableWidgetItem, QPushButton, QLabel, QMessageBox,
                              QHeaderView)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -93,7 +94,7 @@ class ResultsTab(QWidget):
                 for col in range(5):
                     item = self.results_table.item(rank, col)
                     if rank == 0:
-                        item.setBackground(Qt.GlobalColor.green)
+                        item.setBackground(QColor("#00CC66"))
                     elif rank == 1:
                         item.setBackground(Qt.GlobalColor.lightGray)
                     elif rank == 2:
@@ -116,7 +117,7 @@ class ResultsTab(QWidget):
         scores = [CC[i] for i in ranking]
         
         # Create bar chart
-        colors = ['#2ecc71' if i == 0 else '#95a5a6' if i == 1 else '#f39c12' if i == 2 else '#3498db' 
+        colors = ['#00CC66' if i == 0 else '#95a5a6' if i == 1 else '#f39c12' if i == 2 else '#3498db' 
                  for i in range(len(names))]
         
         bars = ax.barh(names, scores, color=colors)

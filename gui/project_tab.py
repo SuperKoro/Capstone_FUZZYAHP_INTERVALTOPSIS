@@ -5,7 +5,7 @@ Handles project configuration: criteria and alternatives management
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, QTextEdit,
-                             QMessageBox, QComboBox, QHeaderView)
+                             QMessageBox, QComboBox, QHeaderView, QSizePolicy)
 from PyQt6.QtCore import Qt
 
 from utils.validators import Validators
@@ -30,7 +30,6 @@ class ProjectTab(QWidget):
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("Project Name:"))
         self.name_input = QLineEdit()
-        self.name_input.setReadOnly(True)
         name_layout.addWidget(self.name_input)
         info_layout.addLayout(name_layout)
         
@@ -77,7 +76,7 @@ class ProjectTab(QWidget):
         self.alternatives_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.alternatives_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.alternatives_table.setColumnWidth(0, 50)
-        self.alternatives_table.setColumnWidth(3, 150)
+        self.alternatives_table.setColumnWidth(3, 220)  # Increased width for action buttons
         alternatives_layout.addWidget(self.alternatives_table)
         
         alternatives_btn_layout = QHBoxLayout()
@@ -157,20 +156,28 @@ class ProjectTab(QWidget):
             # Actions
             actions_widget = QWidget()
             actions_layout = QHBoxLayout()
-            actions_layout.setContentsMargins(2, 2, 2, 2)
+            actions_layout.setContentsMargins(4, 4, 4, 4)  # Increased margins
+            actions_layout.setSpacing(4)  # Add spacing between buttons
             
-            edit_btn = QPushButton("Edit")
+            edit_btn = QPushButton("✎ Edit")
             edit_btn.setProperty("class", "warning")
+            edit_btn.setMinimumHeight(40)  # Taller button
+            edit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             edit_btn.clicked.connect(lambda checked, a_id=alternative['id']: self.edit_alternative(a_id))
             actions_layout.addWidget(edit_btn)
             
-            delete_btn = QPushButton("Delete")
+            delete_btn = QPushButton("− Delete")
             delete_btn.setProperty("class", "danger")
+            delete_btn.setMinimumHeight(40)  # Taller button
+            delete_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             delete_btn.clicked.connect(lambda checked, a_id=alternative['id']: self.delete_alternative(a_id))
             actions_layout.addWidget(delete_btn)
             
             actions_widget.setLayout(actions_layout)
             self.alternatives_table.setCellWidget(row, 3, actions_widget)
+            
+            # Set row height to accommodate taller buttons
+            self.alternatives_table.setRowHeight(row, 50)
     
     def update_project_info(self):
         """Update project information"""

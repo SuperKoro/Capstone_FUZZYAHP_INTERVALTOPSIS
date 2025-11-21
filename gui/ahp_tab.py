@@ -6,7 +6,7 @@ Handles Fuzzy AHP evaluation and weight calculation
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QComboBox, QMessageBox,
                              QFileDialog, QRadioButton, QButtonGroup, QHeaderView, QLineEdit,
-                             QTreeWidget, QTreeWidgetItem, QTextEdit, QTabWidget)
+                             QTreeWidget, QTreeWidgetItem, QTextEdit, QTabWidget, QListView)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 import numpy as np
@@ -18,6 +18,14 @@ from commands.expert_commands import AddExpertCommand, DeleteExpertCommand, SetE
 from commands.ahp_commands import BatchSaveComparisonsCommand, ImportExpertCommand
 from utils.excel_handler import ExcelHandler
 from utils.validators import Validators
+
+
+class NoScrollComboBox(QComboBox):
+    """Custom QComboBox that disables mouse wheel scrolling"""
+    
+    def wheelEvent(self, event):
+        """Ignore wheel events to prevent accidental selection changes"""
+        event.ignore()
 
 
 class AHPTab(QWidget):
@@ -138,6 +146,7 @@ class AHPTab(QWidget):
         comp_layout.addWidget(self.context_label)
         
         self.comparison_table = QTableWidget()
+        self.comparison_table.itemClicked.connect(self.on_comparison_cell_clicked)
         comp_layout.addWidget(self.comparison_table)
         
         # Action buttons
@@ -600,8 +609,32 @@ class AHPTab(QWidget):
             
     def on_expert_changed(self, index):
         """Handle expert selection change"""
+        # Auto-save PREVIOUS expert's comparisons before switching
+        # (We need to do this BEFORE the combo box changes)
+        if hasattr(self, '_previous_expert_id') and self._previous_expert_id is not None:
+            self.auto_save_comparisons_for_expert(self._previous_expert_id)
+        
+        # Update previous expert ID for next change
+        if index >= 0:
+            self._previous_expert_id = self.expert_combo.itemData(index)
+        
+        # Load new expert's comparisons
         if self.current_children:
             self.setup_comparison_table_for_children(self.current_children)
+    
+    def on_comparison_cell_clicked(self, item):
+        """Handle click on any cell in comparison table - open dropdown for that row"""
+        if item is None:
+            return
+        
+        row = item.row()
+        # Get the combobox widget in column 2 (Importance Scale)
+        combo_widget = self.comparison_table.cellWidget(row, 2)
+        
+        if combo_widget:
+            # Set focus and show dropdown
+            combo_widget.setFocus()
+            combo_widget.showPopup()
     
     
     def setup_comparison_table_for_children(self, children):
@@ -717,13 +750,48 @@ class AHPTab(QWidget):
     
     def create_scale_combo(self):
         """Create a scale combo box with autocomplete feature"""
-        from PyQt6.QtWidgets import QCompleter
+        from PyQt6.QtWidgets import QCompleter, QListView
         from PyQt6.QtCore import Qt as QtCore
         
-        scale_combo = QComboBox()
-        scale_combo.setEditable(True)  # Allow typing
-        scale_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # Don't add new items
-        scale_combo.setStyleSheet("font-size: 12px; padding: 5px;")
+        scale_combo = NoScrollComboBox()
+        scale_combo.setEditable(False)  # Disable typing - dropdown only
+        
+        # Set view to QListView to ensure styling works
+        scale_combo.setView(QListView())
+        
+        scale_combo.setStyleSheet("""
+            QComboBox {
+                font-size: 12px;
+                padding: 5px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            
+            /* Style the view (dropdown list) */
+            QComboBox QListView {
+                border: 1px solid #ccc;
+                background-color: white;
+                outline: none;
+            }
+            QComboBox QListView::item {
+                border-bottom: 1px solid #e0e0e0;  /* Separator line */
+                padding: 8px;
+                min-height: 25px;
+                color: black;
+            }
+            QComboBox QListView::item:hover {
+                background-color: #00CED1;  /* Cyan on hover */
+                color: white;
+            }
+            QComboBox QListView::item:selected {
+                background-color: #00CED1;  /* Cyan when selected */
+                color: white;
+            }
+        """)
         
         scale_values = [-9, -8, -7, -6, -5, -4, -3, -2, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         
@@ -737,22 +805,6 @@ class AHPTab(QWidget):
         
         # Set default to 1 (equal)
         scale_combo.setCurrentIndex(8)
-        
-        # Create completer for autocomplete
-        completer = QCompleter(items)
-        completer.setCaseSensitivity(QtCore.CaseSensitivity.CaseInsensitive)
-        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        completer.setFilterMode(QtCore.MatchFlag.MatchContains)
-        
-        scale_combo.setCompleter(completer)
-        
-        # Handle completion selection
-        def on_completion_activated(text):
-            index = scale_combo.findText(text)
-            if index >= 0:
-                scale_combo.setCurrentIndex(index)
-        
-        completer.activated.connect(on_completion_activated)
         
         return scale_combo
     
@@ -1089,6 +1141,49 @@ class AHPTab(QWidget):
         self.inconsistency_text.setPlainText("No consistency data available.")
         self.inconsistency_text.setStyleSheet("background-color: #F8F9FA; border: 1px solid #DEE2E6; padding: 5px; color: #6C757D;")
 
+    def auto_save_comparisons_for_expert(self, expert_id):
+        """Automatically save comparisons for a specific expert without showing messages"""
+        if not self.current_children:
+            return
+        
+        project_id = self.main_window.get_project_id()
+        db = self.main_window.get_db_manager()
+        undo_manager = self.main_window.get_undo_manager()
+        
+        comparisons_to_save = []
+        
+        try:
+            # Iterate through table rows
+            n = len(self.current_children)
+            row = 0
+            for i in range(n):
+                for j in range(i + 1, n):
+                    c1_id = self.current_children[i]['id']
+                    c2_id = self.current_children[j]['id']
+                    
+                    # Get scale value from combo
+                    scale_combo = self.comparison_table.cellWidget(row, 2)
+                    if scale_combo:
+                        scale_val = scale_combo.currentData()
+                        
+                        # Get fuzzy numbers
+                        l, m, u = FuzzyAHP.get_fuzzy_number(scale_val)
+                        
+                        comparisons_to_save.append({
+                            'c1_id': c1_id,
+                            'c2_id': c2_id,
+                            'l': l, 'm': m, 'u': u
+                        })
+                    
+                    row += 1
+            
+            if comparisons_to_save:
+                command = BatchSaveComparisonsCommand(db, project_id, expert_id, comparisons_to_save)
+                undo_manager.execute(command)  # Save silently, no message
+                
+        except Exception:
+            pass  # Silent fail for auto-save
+    
     def save_comparisons(self):
         """Save comparisons to database"""
         if not self.current_children:

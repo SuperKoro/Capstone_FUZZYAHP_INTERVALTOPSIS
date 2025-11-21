@@ -9,6 +9,14 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon, QColor, QBrush
 
 
+class NoScrollComboBox(QComboBox):
+    """Custom QComboBox that disables mouse wheel scrolling"""
+    
+    def wheelEvent(self, event):
+        """Ignore wheel events to prevent accidental selection changes"""
+        event.ignore()
+
+
 class CriteriaTreeWidget(QWidget):
     """Tree widget for hierarchical criteria management"""
     
@@ -76,14 +84,25 @@ class CriteriaTreeWidget(QWidget):
     
     def add_action_buttons(self, item, show_delete=True):
         """Add +/- buttons to a tree item"""
+        # Calculate the level/depth of this item
+        level = 0
+        parent = item.parent()
+        while parent is not None:
+            level += 1
+            parent = parent.parent()
+        
+        # Create button widget with indentation based on level
         button_widget = QWidget()
         button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(2, 2, 2, 2)
+        
+        # Add left margin based on level (20 pixels per level)
+        left_margin = level * 20
+        button_layout.setContentsMargins(left_margin, 2, 2, 2)
         button_layout.setSpacing(5)
         
-        # Add button (+)
+        # Add button (+) - same size and color for all
         add_btn = QPushButton("Add")
-        add_btn.setFixedSize(50, 30)
+        add_btn.setFixedSize(55, 32)
         add_btn.setProperty("class", "success")
         add_btn.setStyleSheet("font-size: 9pt; font-weight: bold;")
         add_btn.setToolTip("Add Sub-criterion")
@@ -133,7 +152,7 @@ class CriteriaTreeWidget(QWidget):
         dialog.setWindowTitle("Criterion Type")
         layout = QFormLayout()
         
-        type_combo = QComboBox()
+        type_combo = NoScrollComboBox()
         type_combo.addItems(["Benefit", "Cost"])
         layout.addRow("Type:", type_combo)
         
@@ -161,6 +180,10 @@ class CriteriaTreeWidget(QWidget):
                 child_item = QTreeWidgetItem(parent_item)
                 child_item.setText(0, name.strip())
                 child_item.setText(1, "Benefit" if is_benefit else "Cost")
+                # Make Type bold
+                type_font = child_item.font(1)
+                type_font.setBold(True)
+                child_item.setFont(1, type_font)
                 child_item.setData(0, Qt.ItemDataRole.UserRole, criterion_id)
                 
                 # Add action buttons
@@ -191,7 +214,7 @@ class CriteriaTreeWidget(QWidget):
         name_input = QLineEdit(criterion_name)
         layout.addRow("Name:", name_input)
         
-        type_combo = QComboBox()
+        type_combo = NoScrollComboBox()
         type_combo.addItems(["Benefit", "Cost"])
         type_combo.setCurrentText(current_type)
         layout.addRow("Type:", type_combo)
@@ -224,6 +247,10 @@ class CriteriaTreeWidget(QWidget):
                     # Update tree item
                     item.setText(0, new_name)
                     item.setText(1, "Benefit" if is_benefit else "Cost")
+                    # Make Type bold
+                    type_font = item.font(1)
+                    type_font.setBold(True)
+                    item.setFont(1, type_font)
                     
                     # Emit signal
                     self.criteria_changed.emit()
@@ -291,6 +318,10 @@ class CriteriaTreeWidget(QWidget):
             item = QTreeWidgetItem()
             item.setText(0, criterion['name'])
             item.setText(1, "Benefit" if criterion['is_benefit'] else "Cost")
+            # Make Type bold
+            type_font = item.font(1)
+            type_font.setBold(True)
+            item.setFont(1, type_font)
             item.setData(0, Qt.ItemDataRole.UserRole, criterion['id'])
             
             items_by_id[criterion['id']] = {

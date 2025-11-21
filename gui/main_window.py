@@ -4,9 +4,9 @@ Creates the main application window with tabbed interface
 """
 
 from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QMenuBar, QMenu, QFileDialog,
-                             QMessageBox, QStatusBar, QToolBar, QWidget, QVBoxLayout)
+                             QMessageBox, QStatusBar, QToolBar, QWidget, QVBoxLayout, QApplication, QDialog)
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 import os
 
 from database.schema import DatabaseSchema
@@ -15,7 +15,11 @@ from gui.project_tab import ProjectTab
 from gui.ahp_tab import AHPTab
 from gui.topsis_tab import TOPSISTab
 from gui.results_tab import ResultsTab
+from gui.methodology_dialog import MethodologyDialog
+from gui.user_guide_dialog import UserGuideDialog
+from gui.welcome_dialog import WelcomeDialog
 from utils.undo_manager import UndoManager
+from utils.project_manager import ProjectManager
 
 
 class MainWindow(QMainWindow):
@@ -29,8 +33,12 @@ class MainWindow(QMainWindow):
         self.project_id = None
         self.undo_manager = UndoManager()
         self.undo_manager.on_stack_change = self.update_undo_redo_actions
+        self.project_manager = ProjectManager()
         
         self.init_ui()
+        
+        # Show welcome dialog after window is shown
+        QTimer.singleShot(100, self.show_welcome_dialog)
     
     def init_ui(self):
         """Initialize the user interface"""
@@ -75,18 +83,14 @@ class MainWindow(QMainWindow):
         """Create the menu bar"""
         menubar = self.menuBar()
         
+        # Home Action (Directly on Menu Bar)
+        home_action = QAction("Home", self)
+        home_action.setStatusTip("Go to Home Screen")
+        home_action.triggered.connect(self.show_welcome_dialog)
+        menubar.addAction(home_action)
+        
         # File menu
         file_menu = menubar.addMenu("File")
-        
-        new_action = QAction("New Project", self)
-        new_action.setShortcut("Ctrl+N")
-        new_action.triggered.connect(self.new_project)
-        file_menu.addAction(new_action)
-        
-        open_action = QAction("Open Project", self)
-        open_action.setShortcut("Ctrl+O")
-        open_action.triggered.connect(self.open_project)
-        file_menu.addAction(open_action)
         
         save_action = QAction("Save Project", self)
         save_action.setShortcut("Ctrl+S")
@@ -126,13 +130,41 @@ class MainWindow(QMainWindow):
         self.redo_action.setEnabled(False)
         edit_menu.addAction(self.redo_action)
         
+        # Methodology menu
+        methodology_menu = menubar.addMenu("Methodology")
+        
+        fuzzy_ahp_action = QAction("Fuzzy AHP", self)
+        fuzzy_ahp_action.triggered.connect(lambda: self.show_methodology(0))
+        methodology_menu.addAction(fuzzy_ahp_action)
+        
+        interval_topsis_action = QAction("Interval TOPSIS", self)
+        interval_topsis_action.triggered.connect(lambda: self.show_methodology(1))
+        methodology_menu.addAction(interval_topsis_action)
+        
+        methodology_menu.addSeparator()
+        
+        view_all_action = QAction("View All Methodologies", self)
+        view_all_action.triggered.connect(lambda: self.show_methodology())
+        methodology_menu.addAction(view_all_action)
+        
         # Help menu
         help_menu = menubar.addMenu("Help")
+        
+        user_guide_action = QAction("User Guide", self)
+        user_guide_action.setShortcut("F1")
+        user_guide_action.triggered.connect(self.show_user_guide)
+        help_menu.addAction(user_guide_action)
+        
+        help_menu.addSeparator()
         
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
     
+    def update_recent_projects_menu(self):
+        """Update the recent projects submenu (Not used in menu anymore, but kept for potential future use)"""
+        pass
+
     def create_toolbar(self):
         """Create the toolbar"""
         toolbar = QToolBar()
@@ -168,6 +200,24 @@ class MainWindow(QMainWindow):
         self.redo_tool_action.setEnabled(False)
         toolbar.addAction(self.redo_tool_action)
     
+    def show_welcome_dialog(self):
+        """Show the welcome dialog"""
+        # Always show dialog when requested
+        dialog = WelcomeDialog(self.project_manager, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            if dialog.action == 'new':
+                self.new_project()
+            elif dialog.action == 'open':
+                self.open_project()
+            elif dialog.action == 'open_recent':
+                self.load_project(dialog.selected_project_path)
+        else:
+            # If dialog rejected (Exit clicked)
+            # If we don't have a project loaded, close app
+            if not self.current_project_path:
+                self.close()
+            # If we DO have a project loaded, just return to it (dialog closes)
+
     def new_project(self):
         """Create a new project"""
         from PyQt6.QtWidgets import QInputDialog, QLineEdit
@@ -191,6 +241,10 @@ class MainWindow(QMainWindow):
                 self.db_manager = DatabaseManager(file_path)
                 self.undo_manager.clear()
                 
+                # Add to project manager
+                self.project_manager.add_project(name, file_path)
+                # self.update_recent_projects_menu() # Removed from menu
+                
                 # Clear previous results
                 if hasattr(self, 'topsis_results'):
                     del self.topsis_results
@@ -208,26 +262,40 @@ class MainWindow(QMainWindow):
             self, "Open Project", "", "MCDM Project Files (*.mcdm);;All Files (*)"
         )
         
-        if file_path and os.path.exists(file_path):
-            self.current_project_path = file_path
-            self.db_manager = DatabaseManager(file_path)
-            self.undo_manager.clear()
+        if file_path:
+            self.load_project(file_path)
             
-            # Get project info
-            with self.db_manager as db:
-                project = db.get_project()
-                if project:
-                    self.project_id = project['id']
-                    
-                    # Clear previous results
-                    if hasattr(self, 'topsis_results'):
-                        del self.topsis_results
-                    
-                    self.set_tabs_enabled(True)
-                    self.refresh_all_tabs()
-                    self.status_bar.showMessage(f"Project: {project['name']} - {file_path}")
-                else:
-                    QMessageBox.warning(self, "Error", "Invalid project file!")
+    def load_project(self, file_path):
+        """Load a project from path"""
+        if not os.path.exists(file_path):
+            QMessageBox.warning(self, "Error", "Project file not found!")
+            self.project_manager.remove_project(file_path)
+            # self.update_recent_projects_menu() # Removed from menu
+            return
+            
+        self.current_project_path = file_path
+        self.db_manager = DatabaseManager(file_path)
+        self.undo_manager.clear()
+        
+        # Get project info
+        with self.db_manager as db:
+            project = db.get_project()
+            if project:
+                self.project_id = project['id']
+                
+                # Add to project manager
+                self.project_manager.add_project(project['name'], file_path)
+                # self.update_recent_projects_menu() # Removed from menu
+                
+                # Clear previous results
+                if hasattr(self, 'topsis_results'):
+                    del self.topsis_results
+                
+                self.set_tabs_enabled(True)
+                self.refresh_all_tabs()
+                self.status_bar.showMessage(f"Project: {project['name']} - {file_path}")
+            else:
+                QMessageBox.warning(self, "Error", "Invalid project file!")
     
     def save_project(self):
         """Save the current project"""
@@ -252,6 +320,14 @@ class MainWindow(QMainWindow):
             import shutil
             shutil.copy(self.current_project_path, file_path)
             self.current_project_path = file_path
+            
+            # Update project manager
+            with self.db_manager as db:
+                project = db.get_project()
+                if project:
+                    self.project_manager.add_project(project['name'], file_path)
+                    # self.update_recent_projects_menu() # Removed from menu
+            
             self.status_bar.showMessage(f"Project saved as: {file_path}")
             QMessageBox.information(self, "Success", "Project saved successfully!")
     
@@ -285,6 +361,23 @@ class MainWindow(QMainWindow):
             "Developed with PyQt6, NumPy, and Pandas"
         )
     
+    def show_methodology(self, initial_tab=None):
+        """Show methodology dialog
+        
+        Args:
+            initial_tab: Index of tab to show initially (0=Fuzzy AHP, 1=Interval TOPSIS)
+                        If None, shows the first tab
+        """
+        dialog = MethodologyDialog(self)
+        if initial_tab is not None:
+            dialog.findChild(QTabWidget).setCurrentIndex(initial_tab)
+        dialog.exec()
+
+    def show_user_guide(self):
+        """Show user guide dialog"""
+        dialog = UserGuideDialog(self)
+        dialog.exec()
+
     def set_tabs_enabled(self, enabled: bool):
         """Enable or disable tabs"""
         for i in range(1, self.tabs.count()):
@@ -335,3 +428,32 @@ class MainWindow(QMainWindow):
         self.redo_action.setText(self.undo_manager.redo_description())
         self.redo_tool_action.setEnabled(can_redo)
         self.redo_tool_action.setToolTip(self.undo_manager.redo_description())
+    
+    def closeEvent(self, event):
+        """Handle window close event - ask to save project"""
+        # If no project is loaded, just close
+        if not self.current_project_path:
+            event.accept()
+            return
+        
+        # Ask user if they want to save
+        reply = QMessageBox.question(
+            self,
+            'Xác nhận thoát',
+            'Bạn có muốn lưu project hiện tại trước khi thoát?',
+            QMessageBox.StandardButton.Yes | 
+            QMessageBox.StandardButton.No | 
+            QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Save project
+            self.save_project()
+            event.accept()
+        elif reply == QMessageBox.StandardButton.No:
+            # Don't save, just exit
+            event.accept()
+        else:
+            # Cancel - don't exit
+            event.ignore()

@@ -5,11 +5,19 @@ Handles Interval TOPSIS rating input and calculation
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QComboBox, QMessageBox,
-                             QHeaderView)
+                             QHeaderView, QListView)
 from PyQt6.QtCore import Qt
 import numpy as np
 
 from algorithms.interval_topsis import IntervalTOPSIS
+
+
+class NoScrollComboBox(QComboBox):
+    """Custom QComboBox that disables mouse wheel scrolling"""
+    
+    def wheelEvent(self, event):
+        """Ignore wheel events to prevent accidental selection changes"""
+        event.ignore()
 
 
 class TOPSISTab(QWidget):
@@ -52,6 +60,7 @@ class TOPSISTab(QWidget):
         matrix_layout = QVBoxLayout()
         
         self.rating_table = QTableWidget()
+        self.rating_table.cellClicked.connect(self.on_rating_cell_clicked)
         matrix_layout.addWidget(self.rating_table)
         
         matrix_group.setLayout(matrix_layout)
@@ -122,6 +131,14 @@ class TOPSISTab(QWidget):
             with db as database:
                 self.load_existing_ratings(database)
 
+    def on_rating_cell_clicked(self, row, col):
+        """Handle click on rating cell - open dropdown"""
+        # Columns start from 1 (0 is Alternative name)
+        if col > 0:
+            combo = self.rating_table.cellWidget(row, col)
+            if combo:
+                combo.showPopup()
+
     def setup_rating_table(self):
         """Setup the rating matrix table"""
         if not self.criteria or not self.alternatives:
@@ -149,12 +166,48 @@ class TOPSISTab(QWidget):
             
         header.setMinimumSectionSize(130)
         
+        # Make rows taller for better visibility
+        self.rating_table.verticalHeader().setDefaultSectionSize(50)
+        
         # Populate rows
         for i, alternative in enumerate(self.alternatives):
             self.rating_table.setItem(i, 0, QTableWidgetItem(alternative['name']))
             
             for j, criterion in enumerate(self.criteria):
-                rating_combo = QComboBox()
+                rating_combo = NoScrollComboBox()
+                rating_combo.setEditable(False)
+                rating_combo.setView(QListView())
+                rating_combo.setStyleSheet("""
+                    QComboBox {
+                        font-size: 12px;
+                        padding: 5px;
+                        border: 1px solid #ccc;
+                        border-radius: 4px;
+                    }
+                    QComboBox::drop-down {
+                        border: none;
+                        width: 20px;
+                    }
+                    QComboBox QListView {
+                        border: 1px solid #ccc;
+                        background-color: white;
+                        outline: none;
+                    }
+                    QComboBox QListView::item {
+                        border-bottom: 1px solid #e0e0e0;
+                        padding: 8px;
+                        min-height: 25px;
+                        color: black;
+                    }
+                    QComboBox QListView::item:hover {
+                        background-color: #00CED1;
+                        color: white;
+                    }
+                    QComboBox QListView::item:selected {
+                        background-color: #00CED1;
+                        color: white;
+                    }
+                """)
                 rating_combo.addItems([
                     "Very Poor", "Poor", "Fair", "Good", "Very Good", "Excellent"
                 ])
