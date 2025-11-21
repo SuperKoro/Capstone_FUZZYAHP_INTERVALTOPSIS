@@ -89,8 +89,8 @@ class AHPTab(QWidget):
         experts_layout = QVBoxLayout()
         
         self.expert_table = QTableWidget()
-        self.expert_table.setColumnCount(4)  # Added Weight column
-        self.expert_table.setHorizontalHeaderLabels(["ID", "Name", "Weight", "Actions"])
+        self.expert_table.setColumnCount(4)  # Added Weight columnp
+        self.expert_table.setHorizontalHeaderLabels(["ID", "Name", "Weight", "Delete"])
         
         # Set resize modes for better visibility
         header = self.expert_table.horizontalHeader()
@@ -129,10 +129,87 @@ class AHPTab(QWidget):
         # Right panel: Comparison area
         right_layout = QVBoxLayout()
         
+        # Instruction Labels (English & Vietnamese)
+        guide_layout = QHBoxLayout()
+        
+        # English Guide
+        guide_label_en = QLabel(
+            "<b>How to Compare:</b> How important is <b>Criterion 1</b> compared to <b>Criterion 2</b>?<br>"
+            "• Select <b>2 to 9</b> if Criterion 1 is more important.<br>"
+            "• Select <b>-2 to -9</b> if Criterion 2 is more important.<br>"
+            "• Select <b>1</b> if they are equal."
+        )
+        guide_label_en.setStyleSheet("""
+            QLabel {
+                background-color: #e8f4f8;
+                color: #2c3e50;
+                padding: 8px;
+                border-radius: 4px;
+                border: 1px solid #b3e5fc;
+                font-size: 12px;
+            }
+        """)
+        guide_label_en.setWordWrap(True)
+        guide_layout.addWidget(guide_label_en)
+        
+        # Vietnamese Guide
+        guide_label_vn = QLabel(
+            "<b>Hướng dẫn so sánh:</b> <b>Tiêu chí 1</b> quan trọng như thế nào so với <b>Tiêu chí 2</b>?<br>"
+            "• Chọn <b>2 đến 9</b> nếu Tiêu chí 1 quan trọng hơn.<br>"
+            "• Chọn <b>-2 đến -9</b> nếu Tiêu chí 2 quan trọng hơn.<br>"
+            "• Chọn <b>1</b> nếu hai tiêu chí quan trọng như nhau."
+        )
+        guide_label_vn.setStyleSheet("""
+            QLabel {
+                background-color: #e8f4f8;
+                color: #2c3e50;
+                padding: 8px;
+                border-radius: 4px;
+                border: 1px solid #b3e5fc;
+                font-size: 12px;
+            }
+        """)
+        guide_label_vn.setWordWrap(True)
+        guide_layout.addWidget(guide_label_vn)
+        
+        right_layout.addLayout(guide_layout)
+        
         # Top bar: Expert Selection
         top_bar = QHBoxLayout()
         top_bar.addWidget(QLabel("Current Expert:"))
         self.expert_combo = QComboBox()
+        self.expert_combo.setView(QListView())
+        self.expert_combo.setStyleSheet("""
+            QComboBox {
+                font-size: 12px;
+                padding: 5px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QListView {
+                border: 1px solid #ccc;
+                background-color: white;
+                outline: none;
+            }
+            QComboBox QListView::item {
+                border-bottom: 1px solid #e0e0e0;
+                padding: 8px;
+                min-height: 25px;
+                color: black;
+            }
+            QComboBox QListView::item:hover {
+                background-color: #00CED1;
+                color: white;
+            }
+            QComboBox QListView::item:selected {
+                background-color: #00CED1;
+                color: white;
+            }
+        """)
         self.expert_combo.currentIndexChanged.connect(self.on_expert_changed)
         top_bar.addWidget(self.expert_combo, 1)
         right_layout.addLayout(top_bar)
@@ -423,23 +500,23 @@ class AHPTab(QWidget):
             # Empty if NULL - user can enter or leave empty for auto
             self.expert_table.setItem(row, 2, weight_item)
             
-            # Actions
+            # Actions (Delete)
             actions_widget = QWidget()
             actions_layout = QHBoxLayout()
             actions_layout.setContentsMargins(2, 2, 2, 2)
+            actions_layout.setSpacing(0)
             
-            delete_btn = QPushButton("-")
-            delete_btn.setFixedSize(28, 28)
+            delete_btn = QPushButton("")
             delete_btn.setProperty("class", "danger")
-            # Ensure perfect centering with explicit alignment
+            delete_btn.setFixedSize(50, 30)  # Fit within column width (60)
             delete_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #DC3545;
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    font-size: 20px;
+                    border-radius: 0px;
+                    padding-left: 5px;
+                    padding-top: 2px;
+                    text-align: left;
                     font-weight: bold;
+                    font-size: 14px;
                 }
                 QPushButton:hover {
                     background-color: #C82333;

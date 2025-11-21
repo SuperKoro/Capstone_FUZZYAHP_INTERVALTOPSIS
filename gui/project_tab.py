@@ -161,15 +161,17 @@ class ProjectTab(QWidget):
             
             edit_btn = QPushButton("✎ Edit")
             edit_btn.setProperty("class", "warning")
-            edit_btn.setMinimumHeight(40)  # Taller button
-            edit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            edit_btn.setMinimumHeight(36)
+            edit_btn.setStyleSheet("border-radius: 0px; margin: 0px;")
+            edit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             edit_btn.clicked.connect(lambda checked, a_id=alternative['id']: self.edit_alternative(a_id))
             actions_layout.addWidget(edit_btn)
             
             delete_btn = QPushButton("− Delete")
             delete_btn.setProperty("class", "danger")
-            delete_btn.setMinimumHeight(40)  # Taller button
-            delete_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            delete_btn.setMinimumHeight(36)
+            delete_btn.setStyleSheet("border-radius: 0px; margin: 0px;")
+            delete_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             delete_btn.clicked.connect(lambda checked, a_id=alternative['id']: self.delete_alternative(a_id))
             actions_layout.addWidget(delete_btn)
             

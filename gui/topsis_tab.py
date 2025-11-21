@@ -48,6 +48,38 @@ class TOPSISTab(QWidget):
         
         expert_layout.addWidget(QLabel("Select Expert:"))
         self.expert_combo = QComboBox()
+        self.expert_combo.setView(QListView())
+        self.expert_combo.setStyleSheet("""
+            QComboBox {
+                font-size: 12px;
+                padding: 5px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QListView {
+                border: 1px solid #ccc;
+                background-color: white;
+                outline: none;
+            }
+            QComboBox QListView::item {
+                border-bottom: 1px solid #e0e0e0;
+                padding: 8px;
+                min-height: 25px;
+                color: black;
+            }
+            QComboBox QListView::item:hover {
+                background-color: #00CED1;
+                color: white;
+            }
+            QComboBox QListView::item:selected {
+                background-color: #00CED1;
+                color: white;
+            }
+        """)
         self.expert_combo.currentIndexChanged.connect(self.on_expert_changed)
         expert_layout.addWidget(self.expert_combo)
         expert_layout.addStretch()

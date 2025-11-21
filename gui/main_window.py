@@ -437,15 +437,34 @@ class MainWindow(QMainWindow):
             return
         
         # Ask user if they want to save
-        reply = QMessageBox.question(
-            self,
-            'Xác nhận thoát',
-            'Bạn có muốn lưu project hiện tại trước khi thoát?',
-            QMessageBox.StandardButton.Yes | 
-            QMessageBox.StandardButton.No | 
-            QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Yes
-        )
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle('Xác nhận thoát')
+        msg_box.setText('Bạn có muốn lưu project hiện tại trước khi thoát?')
+        msg_box.setIcon(QMessageBox.Icon.Question)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | 
+                                 QMessageBox.StandardButton.No | 
+                                 QMessageBox.StandardButton.Cancel)
+        msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
+        
+        # Style No button to be white
+        no_btn = msg_box.button(QMessageBox.StandardButton.No)
+        if no_btn:
+            no_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: white;
+                    color: #2c3e50;
+                    border: 1px solid #bdc3c7;
+                    min-width: 80px;
+                    padding: 6px 16px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover {
+                    background-color: #f5f6fa;
+                    border: 1px solid #3498db;
+                }
+            """)
+
+        reply = msg_box.exec()
         
         if reply == QMessageBox.StandardButton.Yes:
             # Save project
