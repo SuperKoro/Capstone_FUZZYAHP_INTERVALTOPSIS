@@ -57,11 +57,12 @@ class AddComparisonCommand(Command):
         return "Update Comparison"
 
 class ImportExpertCommand(Command):
-    def __init__(self, db_manager, project_id: int, experts_data: List[Dict], comparisons_data: List[Dict]):
+    def __init__(self, db_manager, project_id: int, experts_data: List[Dict], comparisons_data: List[Dict], topsis_ratings_data: List[Dict] = None):
         self.db = db_manager
         self.project_id = project_id
         self.experts_data = experts_data # List of {name, weight, external_id}
         self.comparisons_data = comparisons_data # List of comparison dicts with mapped IDs
+        self.topsis_ratings_data = topsis_ratings_data or [] # List of TOPSIS ratings to import
         self.imported_expert_ids = []
         
     def execute(self) -> bool:
@@ -85,9 +86,13 @@ class ImportExpertCommand(Command):
                 cursor.execute("SELECT name FROM experts WHERE project_id=?", (self.project_id,))
                 existing_names = {row[0] for row in cursor.fetchall()}
                 
+                # Handle name collision with incremental suffix
                 final_name = name
                 if final_name in existing_names:
-                    final_name = f"{final_name} (Imported)"
+                    counter = 1
+                    while f"{name} (Imported {counter})" in existing_names:
+                        counter += 1
+                    final_name = f"{name} (Imported {counter})"
                 
                 new_id = database.add_expert(self.project_id, final_name, weight=expert.get('weight'))
                 self.imported_expert_ids.append(new_id)
@@ -103,12 +108,49 @@ class ImportExpertCommand(Command):
                         comp['c1_id'], comp['c2_id'],
                         comp['l'], comp['m'], comp['u']
                     )
+            
+            # Import TOPSIS ratings with error handling
+            topsis_import_count = 0
+            topsis_skip_count = 0
+            
+            for rating in self.topsis_ratings_data:
+                ext_expert_id = rating['external_expert_id']
+                if ext_expert_id in expert_id_map:
+                    new_expert_id = expert_id_map[ext_expert_id]
+                    try:
+                        database.add_topsis_rating(
+                            project_id=self.project_id,
+                            alternative_id=rating['alternative_id'],
+                            criterion_id=rating['criterion_id'],
+                            rating_lower=rating['rating_lower'],
+                            rating_upper=rating['rating_upper'],
+                            expert_id=new_expert_id,
+                            scenario_id=rating.get('scenario_id', 1)
+                        )
+                        topsis_import_count += 1
+                    except Exception as e:
+                        # Skip invalid TOPSIS ratings (e.g., foreign key mismatch)
+                        topsis_skip_count += 1
+                        print(f"[Import] Skipped TOPSIS rating: {e}")
+            
+            # Store counts for user feedback
+            self.topsis_import_count = topsis_import_count
+            self.topsis_skip_count = topsis_skip_count
         return True
     
     def undo(self) -> bool:
         with self.db as database:
+            cursor = database.conn.cursor()
             for expert_id in self.imported_expert_ids:
+                # Delete AHP comparisons
                 database.delete_ahp_comparisons_by_expert(expert_id)
+                # Delete TOPSIS ratings
+                cursor.execute(
+                    "DELETE FROM topsis_ratings WHERE project_id=? AND expert_id=?",
+                    (self.project_id, expert_id)
+                )
+                database.conn.commit()
+                # Delete expert
                 database.delete_expert(expert_id)
         return True
     

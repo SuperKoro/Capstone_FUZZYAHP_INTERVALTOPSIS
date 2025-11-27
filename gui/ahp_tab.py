@@ -224,6 +224,9 @@ class AHPTab(QWidget):
         
         self.comparison_table = QTableWidget()
         self.comparison_table.itemClicked.connect(self.on_comparison_cell_clicked)
+        
+        # Disable auto-scroll behavior
+        self.comparison_table.setAutoScroll(False)
         comp_layout.addWidget(self.comparison_table)
         
         # Action buttons
@@ -274,14 +277,16 @@ class AHPTab(QWidget):
         results_layout = QVBoxLayout()
         
         self.weights_table = QTableWidget()
-        self.weights_table.setColumnCount(2)
-        self.weights_table.setHorizontalHeaderLabels(["Criterion", "Weight"])
+        self.weights_table.setColumnCount(3)
+        self.weights_table.setHorizontalHeaderLabels(["Criterion", "Weight", "Percentage"])
         
         # Better column sizing for easier viewing
         self.weights_table.setColumnWidth(0, 400)  # Criterion name column - wider
         self.weights_table.setColumnWidth(1, 150)  # Weight column
+        self.weights_table.setColumnWidth(2, 150)  # Percentage column
         self.weights_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.weights_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.weights_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         
         # Much larger rows for better visibility
         self.weights_table.verticalHeader().setDefaultSectionSize(40)
@@ -401,7 +406,18 @@ class AHPTab(QWidget):
     
     def on_tree_item_clicked(self, item, column):
         """Handle tree item click - show comparison matrix for children"""
-        data = item.data(0, Qt.ItemDataRole.UserRole)
+        # Safety check: widget might be deleted after refresh
+        try:
+            if not item:
+                return
+            
+            # Access item properties - may raise RuntimeError if deleted
+            node_name = item.text(0)
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+        except RuntimeError:
+            # Widget was deleted (happens after refresh)
+            print("Tree item no longer valid, ignoring click")
+            return
         
         if not data:
             return
@@ -410,17 +426,39 @@ class AHPTab(QWidget):
         
         if len(children) < 2:
             # Leaf node or only one child
-            self.context_label.setText(f"'{item.text(0)}' has no children to compare")
+            self.context_label.setText(f"'{node_name}' has no children to compare")
             self.comparison_table.setRowCount(0)
             self.current_node = None
             self.current_children = []
             return
         
+        # Check if experts exist before allowing comparisons
+        if not self.experts:
+            reply = QMessageBox.question(
+                self,
+                "No Experts Found",
+                "You need to add at least one expert to perform comparisons.\n\nWould you like to add an expert now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                self.add_expert()
+                # After adding expert, check again
+                if not self.experts:
+                    # User cancelled expert creation
+                    self.context_label.setText("Please add an expert to begin comparisons")
+                    self.comparison_table.setRowCount(0)
+                    return
+            else:
+                self.context_label.setText("Please add an expert to begin comparisons")
+                self.comparison_table.setRowCount(0)
+                return
+        
         # Show comparison matrix for children
         self.current_node = data
         self.current_children = children
         
-        node_name = item.text(0)
         self.context_label.setText(f"Comparing children of: {node_name} ({len(children)} criteria)")
         
         self.setup_comparison_table_for_children(children)
@@ -443,24 +481,15 @@ class AHPTab(QWidget):
         self.cr_label.setText("CR: -")
         self.cr_label.setStyleSheet("font-weight: bold;")
         
-        # Get hierarchical criteria structure from project tab
-        if hasattr(self.main_window, 'project_tab') and hasattr(self.main_window.project_tab, 'criteria_tree'):
-            criteria_tree = self.main_window.project_tab.criteria_tree
-            if criteria_tree:
-                # Get all criteria with hierarchy info
-                self.criteria = criteria_tree.get_all_criteria()
-                # Get only leaf criteria for TOPSIS
-                self.leaf_criteria = criteria_tree.get_leaf_criteria()
-            else:
-                # Fallback to database query
-                with db as database:
-                    self.criteria = database.get_criteria(self.main_window.get_project_id())
-                    self.leaf_criteria = self.criteria
-        else:
-            # Fallback to database query
-            with db as database:
-                self.criteria = database.get_criteria(self.main_window.get_project_id())
-                self.leaf_criteria = self.criteria
+        # Get hierarchical criteria structure - ALWAYS from DB to get latest weights
+        with db as database:
+            # Load ALL criteria with weights from database
+            self.criteria = database.get_criteria(self.main_window.get_project_id())
+            # Leaf criteria are same for now
+            criteria_ids = {c['id'] for c in self.criteria}
+            parent_ids = {c['parent_id'] for c in self.criteria if c.get('parent_id') is not None}
+            leaf_ids = criteria_ids - parent_ids
+            self.leaf_criteria = [c for c in self.criteria if c['id'] in leaf_ids]
         
         with db as database:
             # Load experts
@@ -476,6 +505,28 @@ class AHPTab(QWidget):
         
         # Build criteria tree for navigation
         self.build_criteria_tree()
+        
+        # NEW: Auto-load weights if they exist for current scenario
+        self.load_existing_weights()
+    
+    def load_existing_weights(self):
+        """Load and display weights if already calculated for current scenario"""
+        if not self.criteria:
+            return
+        
+        # Check if any criteria have weights > 0
+        has_weights = any(c.get('weight', 0) > 0 for c in self.criteria)
+        
+        if has_weights:
+            # Build global_weights dict
+            global_weights = {c['id']: c.get('weight', 0) for c in self.criteria}
+            
+            # Display results (consistency info not available from DB, will show as "-")
+            self.display_hierarchical_weights(global_weights, consistency_info={})
+            
+            print(f"[AHP Auto-Load] Loaded existing weights for {len(global_weights)} criteria")
+        else:
+            print("[AHP Auto-Load] No existing weights found")
     
     def populate_expert_table(self):
         """Populate expert table"""
@@ -758,6 +809,9 @@ class AHPTab(QWidget):
                 # Scale combo with autocomplete
                 scale_combo = self.create_scale_combo()
                 
+                # Connect signal to save immediately on change
+                scale_combo.currentIndexChanged.connect(lambda index, r=row: self.save_single_comparison(r))
+                
                 self.comparison_table.setCellWidget(row, 2, scale_combo)
                 row += 1
         
@@ -775,7 +829,10 @@ class AHPTab(QWidget):
         db = self.main_window.get_db_manager()
         with db as database:
             # Get all comparisons for this expert
-            comparisons = database.get_ahp_comparisons(project_id)
+            comparisons = database.get_ahp_comparisons(
+                project_id,
+                scenario_id=self.main_window.current_scenario_id  # NEW
+            )
             # Filter for this expert
             comparisons = [c for c in comparisons if c['expert_id'] == expert_id]
             
@@ -885,6 +942,54 @@ class AHPTab(QWidget):
         
         return scale_combo
     
+    def save_single_comparison(self, row):
+        """Save a single comparison change immediately"""
+        expert_id = self.expert_combo.currentData()
+        if expert_id is None or not self.current_node:
+            return
+        
+        # Get the criteria IDs from the table
+        criterion1_name = self.comparison_table.item(row, 0).text()
+        criterion2_name = self.comparison_table.item(row, 1).text()
+        
+        # Find criterion IDs
+        criterion1_id = None
+        criterion2_id = None
+        for c in self.criteria:
+            if c['name'] == criterion1_name:
+                criterion1_id = c['id']
+            if c['name'] == criterion2_name:
+                criterion2_id = c['id']
+        
+        if not criterion1_id or not criterion2_id:
+            return
+        
+        # Get the comparison value
+        combo = self.comparison_table.cellWidget(row, 2)
+        if not combo:
+            return
+        
+        value = combo.currentData()
+        
+        # Convert to fuzzy triangular number
+        fuzzy_l, fuzzy_m, fuzzy_u = FuzzyAHP.get_fuzzy_number(value)
+        
+        # Save to database
+        db = self.main_window.get_db_manager()
+        if db:
+            project_id = self.main_window.get_project_id()
+            with db as database:
+                database.add_ahp_comparison(
+                    project_id,
+                    expert_id,
+                    criterion1_id,
+                    criterion2_id,
+                    fuzzy_l,
+                    fuzzy_m,
+                    fuzzy_u,
+                    scenario_id=self.main_window.current_scenario_id
+                )
+    
     def add_expert(self):
         """Add a new expert"""
         from PyQt6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox
@@ -913,6 +1018,8 @@ class AHPTab(QWidget):
             command = AddExpertCommand(db, project_id, name)
             if undo_manager.execute(command):
                 self.load_data()
+                # Also refresh TOPSIS tab so expert appears there
+                self.main_window.topsis_tab.load_data()
                 QMessageBox.information(self, "Success", "Expert added successfully!")
             else:
                 QMessageBox.critical(self, "Error", "Failed to add expert.")
@@ -1043,6 +1150,44 @@ class AHPTab(QWidget):
                             'u': comp['fuzzy_u']
                         })
             
+            # ============================================================
+            # IMPORTANT: Also import TOPSIS ratings for these experts
+            # ============================================================
+            topsis_ratings_to_import = []
+            
+            # Get local alternatives mapping
+            with db as database:
+                local_alternatives = database.get_alternatives(project_id)
+            local_alt_map = {alt['name']: alt['id'] for alt in local_alternatives}
+            
+            # Get external alternatives mapping
+            ext_cursor.execute("SELECT * FROM alternatives")
+            ext_alternatives = {alt['id']: alt['name'] for alt in [dict(row) for row in ext_cursor.fetchall()]}
+            
+            # Process TOPSIS ratings for each expert
+            for ext_expert in ext_experts:
+                # Get TOPSIS ratings for this expert from external DB
+                ext_cursor.execute(
+                    "SELECT * FROM topsis_ratings WHERE expert_id = ?",
+                    (ext_expert['id'],)
+                )
+                ext_ratings = [dict(row) for row in ext_cursor.fetchall()]
+                
+                for rating in ext_ratings:
+                    # Map external IDs to local IDs via names
+                    alt_name = ext_alternatives.get(rating['alternative_id'])
+                    crit_name = ext_criteria.get(rating['criterion_id'])
+                    
+                    if alt_name in local_alt_map and crit_name in local_criteria_map:
+                        topsis_ratings_to_import.append({
+                            'external_expert_id': ext_expert['id'],
+                            'alternative_id': local_alt_map[alt_name],
+                            'criterion_id': local_criteria_map[crit_name],
+                            'rating_lower': rating['rating_lower'],
+                            'rating_upper': rating['rating_upper'],
+                            'scenario_id': self.main_window.current_scenario_id  # Use current scenario ID
+                        })
+            
             ext_conn.close()
             
             if not experts_to_import:
@@ -1054,15 +1199,29 @@ class AHPTab(QWidget):
             project_id = self.main_window.get_project_id()
             undo_manager = self.main_window.get_undo_manager()
             
-            command = ImportExpertCommand(db, project_id, experts_to_import, comparisons_to_import)
+            command = ImportExpertCommand(db, project_id, experts_to_import, comparisons_to_import, topsis_ratings_to_import)
             
             if undo_manager.execute(command):
                 self.load_data()
-                QMessageBox.information(
-                    self, "Import Successful", 
-                    f"Imported {len(experts_to_import)} expert(s) with {len(comparisons_to_import)} comparisons.\n"
-                    f"Expert weights have been preserved."
-                )
+                # IMPORTANT: Also refresh TOPSIS tab so imported experts appear there
+                if hasattr(self.main_window, 'topsis_tab'):
+                    self.main_window.topsis_tab.load_data()
+                
+                # Build success message
+                msg = f"Imported {len(experts_to_import)} expert(s) with:\n"
+                msg += f"• {len(comparisons_to_import)} AHP comparisons\n"
+                
+                # Show TOPSIS import stats
+                if hasattr(command, 'topsis_import_count'):
+                    msg += f"• {command.topsis_import_count} TOPSIS ratings imported\n"
+                    if command.topsis_skip_count > 0:
+                        msg += f"• {command.topsis_skip_count} TOPSIS ratings skipped (invalid data)\n"
+                else:
+                    msg += f"• {len(topsis_ratings_to_import)} TOPSIS ratings\n"
+                
+                msg += "Expert weights have been preserved."
+                
+                QMessageBox.information(self, "Import Successful", msg)
             else:
                 QMessageBox.critical(self, "Error", "Failed to import experts.")
             
@@ -1146,6 +1305,7 @@ class AHPTab(QWidget):
             name = indent + criterion['name']
             
             weight = global_weights.get(criterion['id'], 0.0)
+            percentage = weight * 100  # Convert to percentage
             
             # Create items
             name_item = QTableWidgetItem(name)
@@ -1155,15 +1315,21 @@ class AHPTab(QWidget):
             weight_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             weight_item.setFlags(weight_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             
+            percentage_item = QTableWidgetItem(f"{percentage:.2f}%")
+            percentage_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            percentage_item.setFlags(percentage_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            
             # Make parent criteria bold
             if criterion.get('parent_id') is None:
                 font = name_item.font()
                 font.setBold(True)
                 name_item.setFont(font)
                 weight_item.setFont(font)
+                percentage_item.setFont(font)
             
             self.weights_table.setItem(row, 0, name_item)
             self.weights_table.setItem(row, 1, weight_item)
+            self.weights_table.setItem(row, 2, percentage_item)
         
         # Display in hierarchical order
         main_criteria = [c for c in self.criteria if c.get('parent_id') is None]
@@ -1323,7 +1489,10 @@ class AHPTab(QWidget):
         try:
             with db as database:
                 # Get all comparisons
-                comparisons = database.get_ahp_comparisons(project_id)
+                comparisons = database.get_ahp_comparisons(
+                    project_id,
+                    scenario_id=self.main_window.current_scenario_id  # NEW
+                )
                 
                 if not comparisons:
                     QMessageBox.warning(self, "Warning", "No comparisons found. Please add comparisons first.")
