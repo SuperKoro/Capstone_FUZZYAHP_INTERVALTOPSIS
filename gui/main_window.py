@@ -15,6 +15,7 @@ from gui.project_tab import ProjectTab
 from gui.ahp_tab import AHPTab
 from gui.topsis_tab import TOPSISTab
 from gui.results_tab import ResultsTab
+from gui.sensitivity_tab import SensitivityAnalysisTab
 from gui.methodology_dialog import MethodologyDialog
 from gui.user_guide_dialog import UserGuideDialog
 from gui.welcome_dialog import WelcomeDialog
@@ -31,9 +32,14 @@ class MainWindow(QMainWindow):
         self.current_project_path = None
         self.db_manager = None
         self.project_id = None
+        self.current_scenario_id = 1  # NEW: Default to Base Scenario
         self.undo_manager = UndoManager()
         self.undo_manager.on_stack_change = self.update_undo_redo_actions
         self.project_manager = ProjectManager()
+        
+        # Scenario UI components (initialized in create_toolbar)
+        self.scenario_combo = None
+        self.scenario_new_btn = None
         
         self.init_ui()
         
@@ -65,11 +71,13 @@ class MainWindow(QMainWindow):
         self.ahp_tab = AHPTab(self)
         self.topsis_tab = TOPSISTab(self)
         self.results_tab = ResultsTab(self)
+        self.sensitivity_tab = SensitivityAnalysisTab(self)
         
         self.tabs.addTab(self.project_tab, "Project Setup")
         self.tabs.addTab(self.ahp_tab, "Fuzzy AHP Evaluation")
         self.tabs.addTab(self.topsis_tab, "TOPSIS Rating")
         self.tabs.addTab(self.results_tab, "Results")
+        self.tabs.addTab(self.sensitivity_tab, "Sensitivity Analysis")
         
         # Create status bar
         self.status_bar = QStatusBar()
@@ -167,6 +175,8 @@ class MainWindow(QMainWindow):
 
     def create_toolbar(self):
         """Create the toolbar"""
+        from PyQt6.QtWidgets import QLabel, QComboBox, QPushButton
+        
         toolbar = QToolBar()
         self.addToolBar(toolbar)
         
@@ -199,6 +209,56 @@ class MainWindow(QMainWindow):
         self.redo_tool_action.triggered.connect(self.redo)
         self.redo_tool_action.setEnabled(False)
         toolbar.addAction(self.redo_tool_action)
+        
+        # ============================================================
+        # NEW: Scenario Selector (Option B+ Implementation)
+        # ============================================================
+        toolbar.addSeparator()
+        
+        # Label
+        scenario_label = QLabel(" Scenario: ")
+        toolbar.addWidget(scenario_label)
+        
+        # ComboBox for scenario selection
+        self.scenario_combo = QComboBox()
+        self.scenario_combo.setMinimumWidth(200)
+        self.scenario_combo.setToolTip("Select active scenario")
+        self.scenario_combo.currentIndexChanged.connect(self.on_scenario_changed)
+        toolbar.addWidget(self.scenario_combo)
+        
+        # New Scenario button
+        self.scenario_new_btn = QPushButton("➕")
+        self.scenario_new_btn.setToolTip("Create new scenario")
+        self.scenario_new_btn.setFixedSize(30, 30)
+        self.scenario_new_btn.clicked.connect(self.create_new_scenario)
+        self.scenario_new_btn.setEnabled(False)  # Disabled until project loaded
+        toolbar.addWidget(self.scenario_new_btn)
+        
+        # Delete Scenario button
+        self.scenario_delete_btn = QPushButton("🗑️")
+        self.scenario_delete_btn.setToolTip("Delete current scenario (Base scenario cannot be deleted)")
+        self.scenario_delete_btn.setFixedSize(30, 30)
+        self.scenario_delete_btn.clicked.connect(self.delete_current_scenario)
+        self.scenario_delete_btn.setEnabled(False)  # Disabled until project loaded
+        self.scenario_delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-size: 14px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+        """)
+        toolbar.addWidget(self.scenario_delete_btn)
+        
+        # Initially populate with Base Scenario
+        self.scenario_combo.addItem("Base Scenario", 1)  # (name, scenario_id)
+        self.scenario_combo.setEnabled(False)  # Disabled until project loaded
     
     def show_welcome_dialog(self):
         """Show the welcome dialog"""
@@ -264,38 +324,65 @@ class MainWindow(QMainWindow):
         
         if file_path:
             self.load_project(file_path)
-            
+    
     def load_project(self, file_path):
-        """Load a project from path"""
-        if not os.path.exists(file_path):
-            QMessageBox.warning(self, "Error", "Project file not found!")
-            self.project_manager.remove_project(file_path)
-            # self.update_recent_projects_menu() # Removed from menu
-            return
+        """Load a project from file"""
+        try:
+            self.current_project_path = file_path
+            self.db_manager = DatabaseManager(file_path)
             
-        self.current_project_path = file_path
-        self.db_manager = DatabaseManager(file_path)
-        self.undo_manager.clear()
-        
-        # Get project info
-        with self.db_manager as db:
-            project = db.get_project()
-            if project:
-                self.project_id = project['id']
-                
-                # Add to project manager
-                self.project_manager.add_project(project['name'], file_path)
-                # self.update_recent_projects_menu() # Removed from menu
-                
-                # Clear previous results
-                if hasattr(self, 'topsis_results'):
-                    del self.topsis_results
-                
-                self.set_tabs_enabled(True)
-                self.refresh_all_tabs()
-                self.status_bar.showMessage(f"Project: {project['name']} - {file_path}")
-            else:
-                QMessageBox.warning(self, "Error", "Invalid project file!")
+            # Get project info
+            with self.db_manager as db:
+                project = db.get_project()
+                if project:
+                    self.project_id = project['id']
+                    self.setWindowTitle(f"Supplier Selection - {project['name']}")
+                    self.status_bar.showMessage(f"Project loaded: {project['name']}")
+                    
+                    # Load data into tabs (with individual error handling)
+                    try:
+                        self.project_tab.load_data()
+                    except Exception as e:
+                        print(f"Error loading project tab: {e}")
+                    
+                    try:
+                        self.ahp_tab.load_data()
+                    except Exception as e:
+                        print(f"Error loading AHP tab: {e}")
+                    
+                    try:
+                        self.topsis_tab.load_data()
+                    except Exception as e:
+                        print(f"Error loading TOPSIS tab: {e}")
+                    
+                    try:
+                        self.results_tab.load_data()
+                    except Exception as e:
+                        print(f"Error loading results tab: {e}")
+                    
+                    # Enable tabs
+                    self.set_tabs_enabled(True)
+                    
+                    # NEW: Enable and load scenarios (ALWAYS RUN THIS)
+                    self.scenario_combo.setEnabled(True)
+                    self.scenario_new_btn.setEnabled(True)
+                    # Delete button enabled only for non-base scenarios (will update in load_scenarios)
+                    self.scenario_delete_btn.setEnabled(False)
+                    self.current_scenario_id = 1  # Reset to Base Scenario
+                    
+                    try:
+                        self.load_scenarios()
+                    except Exception as e:
+                        print(f"Error loading scenarios: {e}")
+                    
+                    # Add to recent projects
+                    self.project_manager.add_project(project['name'], file_path)
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load project:\n{str(e)}")
+            print(f"Load project error: {e}")
+            import traceback
+            traceback.print_exc()
     
     def save_project(self):
         """Save the current project"""
@@ -389,6 +476,8 @@ class MainWindow(QMainWindow):
         self.ahp_tab.load_data()
         self.topsis_tab.load_data()
         self.results_tab.load_data()
+        if hasattr(self, 'sensitivity_tab'):
+            self.sensitivity_tab.load_data()
     
     def get_db_manager(self):
         """Get the database manager"""
@@ -428,6 +517,238 @@ class MainWindow(QMainWindow):
         self.redo_action.setText(self.undo_manager.redo_description())
         self.redo_tool_action.setEnabled(can_redo)
         self.redo_tool_action.setToolTip(self.undo_manager.redo_description())
+    
+    
+    # ============================================================================
+    # Scenario Management Methods (Option B+ Implementation)
+    # ============================================================================
+    
+    def load_scenarios(self):
+        """Load all scenarios for current project into ComboBox"""
+        if not self.project_id:
+            return
+        
+        # Block signals to prevent triggering on_scenario_changed during load
+        self.scenario_combo.blockSignals(True)
+        self.scenario_combo.clear()
+        
+        try:
+            from utils.scenario_manager import ScenarioManager
+            
+            scenario_manager = ScenarioManager(self.db_manager, self.project_id)
+            scenarios = scenario_manager.get_all_scenarios()
+            
+            for scenario in scenarios:
+                display_name = scenario['name']
+                if scenario['is_base']:
+                    display_name += " (Base)"
+                self.scenario_combo.addItem(display_name, scenario['id'])
+            
+            # Select current scenario
+            for i in range(self.scenario_combo.count()):
+                if self.scenario_combo.itemData(i) == self.current_scenario_id:
+                    self.scenario_combo.setCurrentIndex(i)
+                    break
+                    
+        except Exception as e:
+            print(f"Error loading scenarios: {e}")
+        finally:
+            self.scenario_combo.blockSignals(False)
+    
+    def on_scenario_changed(self, index):
+        """Handle scenario selection change"""
+        if index < 0:
+            return
+        
+        new_scenario_id = self.scenario_combo.itemData(index)
+        if new_scenario_id is None or new_scenario_id == self.current_scenario_id:
+            return
+        
+        print(f"[Scenario Switch] From {self.current_scenario_id} to {new_scenario_id}")
+        self.current_scenario_id = new_scenario_id
+        
+        # CHANGED: Refresh ALL tabs instead of just current tab
+        # This ensures auto-load works regardless of which tab user is on
+        print("[Scenario Switch] Refreshing all tabs...")
+        if hasattr(self, 'project_tab'):
+            self.project_tab.load_data()
+        if hasattr(self, 'ahp_tab'):
+            self.ahp_tab.load_data()
+        if hasattr(self, 'topsis_tab'):
+            self.topsis_tab.load_data()
+        if hasattr(self, 'results_tab'):
+            self.results_tab.load_data()
+        if hasattr(self, 'sensitivity_tab'):
+            self.sensitivity_tab.load_data()
+        
+        # Update status bar
+        scenario_name = self.scenario_combo.currentText()
+        self.status_bar.showMessage(f"Switched to: {scenario_name}", 3000)
+        
+        # Enable/disable delete button (cannot delete base scenario)
+        if hasattr(self, 'scenario_delete_btn'):
+            self.scenario_delete_btn.setEnabled(new_scenario_id != 1)
+    
+    def create_new_scenario(self):
+        """Create new scenario via QInputDialog"""
+        from PyQt6.QtWidgets import QInputDialog
+        from utils.scenario_manager import ScenarioManager
+        
+        if not self.project_id:
+            QMessageBox.warning(self, "No Project", "Please load a project first.")
+            return
+        
+        scenario_manager = ScenarioManager(self.db_manager, self.project_id)
+        
+        # Get existing scenario names for validation
+        existing_scenarios = scenario_manager.get_all_scenarios()
+        existing_names = {s['name'].lower() for s in existing_scenarios}
+        
+        # Ask for scenario name with validation loop
+        while True:
+            name, ok = QInputDialog.getText(
+                self,
+                "New Scenario",
+                "Enter scenario name:",
+                text=f"Scenario {len(existing_scenarios) + 1}"
+            )
+            
+            if not ok or not name.strip():
+                return  # User cancelled
+            
+            # Validate name
+            name = name.strip()
+            
+            if name.lower() in existing_names:
+                QMessageBox.warning(
+                    self,
+                    "Duplicate Name",
+                    f"A scenario named '{name}' already exists.\nPlease choose a different name."
+                )
+                continue  # Ask again
+            
+            if len(name) > 100:
+                QMessageBox.warning(
+                    self,
+                    "Name Too Long",
+                    "Scenario name must be 100 characters or less."
+                )
+                continue
+            
+            # Name is valid, break loop
+            break
+        
+        try:
+            # Duplicate from current scenario
+            new_id = scenario_manager.duplicate_scenario(
+                source_scenario_id=self.current_scenario_id,
+                new_name=name,
+                new_description=f"Created from {self.scenario_combo.currentText()}"
+            )
+            
+            # Reload combo and switch to new scenario
+            self.load_scenarios()
+            
+            # Select the new scenario
+            for i in range(self.scenario_combo.count()):
+                if self.scenario_combo.itemData(i) == new_id:
+                    self.scenario_combo.setCurrentIndex(i)
+                    break
+            
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Scenario '{name}' created successfully!"
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to create scenario:\n{str(e)}"
+            )
+    
+    def delete_current_scenario(self):
+        """Delete the currently selected scenario"""
+        from PyQt6.QtWidgets import QMessageBox
+        from utils.scenario_manager import ScenarioManager
+        
+        if not self.project_id:
+            QMessageBox.warning(self, "No Project", "Please load a project first.")
+            return
+        
+        current_scenario_id = self.current_scenario_id
+        current_scenario_name = self.scenario_combo.currentText()
+        
+        # Prevent deleting base scenario
+        if current_scenario_id == 1:
+            QMessageBox.warning(
+                self,
+                "Cannot Delete Base Scenario",
+                "The base scenario cannot be deleted.\n\n"
+                "It serves as the foundation for all other scenarios."
+            )
+            return
+        
+        # Confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete scenario:\n\n"
+            f"'{current_scenario_name}'?\n\n"
+            f"This will permanently delete:\n"
+            f"• All AHP comparisons\n"
+            f"• All TOPSIS ratings\n"
+            f"• All associated data\n\n"
+            f"This action cannot be undone!",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        try:
+            scenario_manager = ScenarioManager(self.db_manager, self.project_id)
+            
+            # Delete scenario
+            scenario_manager.delete_scenario(current_scenario_id)
+            
+            # Reload scenarios and switch to base
+            self.load_scenarios()
+            
+            # Select base scenario (index 0)
+            self.scenario_combo.setCurrentIndex(0)
+            
+            QMessageBox.information(
+                self,
+                "Success",
+                f"Scenario '{current_scenario_name}' has been deleted successfully."
+            )
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to delete scenario:\n{str(e)}"
+            )
+    
+    def refresh_current_tab(self):
+        """Refresh data in currently active tab"""
+        current_index = self.tabs.currentIndex()
+        
+        print(f"[Refresh] Current tab index: {current_index}")
+        
+        if current_index == 0:  # Project tab
+            self.project_tab.load_data()
+        elif current_index == 1:  # AHP tab
+            self.ahp_tab.load_data()
+        elif current_index == 2:  # TOPSIS tab
+            self.topsis_tab.load_data()
+        elif current_index == 3:  # Results tab
+            self.results_tab.load_data()
+    
+    # ============================================================================
     
     def closeEvent(self, event):
         """Handle window close event - ask to save project"""
