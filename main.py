@@ -8,14 +8,50 @@ A standalone desktop application for supplier selection using:
 """
 
 import sys
+import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
 from gui.main_window import MainWindow
 
 
+def check_migration_status():
+    """Check if any .mcdm files need migration and display warning if needed"""
+    try:
+        from database.database_migration import check_migration_needed
+        
+        # Find all .mcdm files in current directory
+        mcdm_files = [f for f in os.listdir('.') if f.endswith('.mcdm')]
+        needs_migration = []
+        
+        for mcdm_file in mcdm_files:
+            if os.path.exists(mcdm_file):
+                try:
+                    if check_migration_needed(mcdm_file):
+                        needs_migration.append(mcdm_file)
+                except Exception:
+                    # Ignore errors during check
+                    pass
+        
+        if needs_migration:
+            print("\n" + "="*60)
+            print("⚠️  DATABASE MIGRATION REQUIRED")
+            print("="*60)
+            print("The following database files need to be migrated:")
+            for f in needs_migration:
+                print(f"  - {f}")
+            print("\nTo fix this, run: python run_migration.py")
+            print("="*60 + "\n")
+    except Exception:
+        # Silently ignore if migration check fails
+        pass
+
+
 def main():
     """Main application entry point"""
+    # Check migration status before starting app
+    check_migration_status()
+    
     # Enable High DPI scaling
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough

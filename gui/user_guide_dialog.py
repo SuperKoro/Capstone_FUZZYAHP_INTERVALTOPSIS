@@ -250,33 +250,51 @@ class UserGuideDialog(QDialog):
     def add_project_setup_tab(self):
         """Add Project Setup tab"""
         steps = [
-            ("Tạo dự án mới", 
-             "Nhập tên dự án và mô tả. Hệ thống sẽ tự động tạo file lưu trữ.", 
+            ("Bước 1: Tạo dự án mới", 
+             "Từ màn hình chính, nhấn nút 'New' để tạo project mới.\n"
+             "Nhập tên project và chọn vị trí lưu file (tệp .mcdm).", 
              "guide_project_setup"),
-            ("Thiết lập Cấu trúc Tiêu chí", 
-             "Xây dựng cây tiêu chí (Criteria Hierarchy). Nhấn '+' để thêm tiêu chí con, '-' để xóa. "
-             "Xác định loại tiêu chí là Cost (Càng thấp càng tốt) hoặc Benefit (Càng cao càng tốt).", 
-             None),
-            ("Quản lý Nhà cung cấp", 
-             "Thêm danh sách các nhà cung cấp cần đánh giá vào bảng Alternatives.", 
-             None)
+            ("Bước 2: Thêm tiêu chí đánh giá", 
+             "Trong tab 'Project Setup':\n"
+             "• Nhấn nút 'Add' ở phần Criteria để thêm tiêu chí chính\n"
+             "• Nhấn nút 'Add' bên cạnh tiêu chí để thêm tiêu chí con (sub-criteria)\n"
+             "• Chọn loại: Cost (giá trị thấp tốt hơn) hoặc Benefit (giá trị cao tốt hơn)", 
+             "Criteria2"),
+            ("Bước 3: Thêm nhà cung cấp", 
+             "Ở phần 'Alternatives (Suppliers) Management':\n"
+             "• Nhấn nút 'Add Alternative' để thêm từng nhà cung cấp cần đánh giá\n"
+             "• Nhập tên và mô tả cho mỗi nhà cung cấp", 
+             "Alternatives")
         ]
-        tab = self.create_tab_content("Thiết lập Dự án & Tiêu chí", steps)
+        tab = self.create_tab_content("Thiết lập Dự án", steps)
         self.tabs.addTab(tab, "1. Thiết lập")
 
     def add_fuzzy_ahp_tab(self):
         """Add Fuzzy AHP tab"""
         steps = [
-            ("So sánh cặp (Pairwise Comparisons)", 
-             "Chọn chuyên gia và thực hiện so sánh từng cặp tiêu chí. "
-             "Sử dụng thang đo 1-9 để đánh giá mức độ quan trọng giữa 2 tiêu chí.", 
-             "guide_fuzzy_ahp_input"),
-            ("Kiểm tra Nhất quán", 
-             "Hệ thống tự động tính chỉ số CR (Consistency Ratio). "
-             "Nếu CR > 0.1, bạn nên xem xét lại các đánh giá để đảm bảo tính nhất quán.", 
+            ("Bước 1: Thêm chuyên gia đánh giá", 
+             "Trong tab 'Fuzzy AHP Evaluation':\n"
+             "• Nhấn nút 'Add Expert' để thêm chuyên gia\n"
+             "• Nhập tên chuyên gia", 
+             "Expert"),
+            ("Bước 2: So sánh tiêu chí", 
+             "Thực hiện so sánh từng cặp tiêu chí:\n"
+             "• Chọn chuyên gia từ dropdown\n"
+             "• Nhấp vào 'Goal' trong cây Criteria để so sánh các tiêu chí chính\n"
+             "• Nhấp vào từng tiêu chí để so sánh các tiêu chí con của nó\n"
+             "• Chọn mức độ quan trọng từ dropdown (từ -9 đến +9)", 
+             "Criteria1"),
+            ("Bước 3: Tính toán trọng số", 
+             "Sau khi hoàn thành tất cả so sánh:\n"
+             "• Nhấn nút 'Calculate All Weights' để tính toán\n"
+             "• Kiểm tra chỉ số CR (Consistency Ratio):\n"
+             "  - CR ≤ 0.1 (xanh): Đánh giá nhất quán, tốt ✓\n"
+             "  - CR > 0.1 (đỏ): Cần xem xét lại các so sánh", 
              None),
-            ("Tính toán Trọng số", 
-             "Xem kết quả trọng số (Weights) của từng tiêu chí sau khi tính toán Fuzzy AHP.", 
+            ("Bước 4: Xem kết quả trọng số", 
+             "Chuyển sang tab 'Results' để xem:\n"
+             "• Trọng số (Weight) của từng tiêu chí\n"
+             "• Biểu đồ trực quan phân bổ trọng số", 
              "guide_fuzzy_ahp_results")
         ]
         tab = self.create_tab_content("Đánh giá Fuzzy AHP", steps)
@@ -285,10 +303,27 @@ class UserGuideDialog(QDialog):
     def add_topsis_tab(self):
         """Add TOPSIS tab"""
         steps = [
-            ("Đánh giá Hiệu suất", 
-             "Chuyển sang tab TOPSIS Rating. Với mỗi chuyên gia, đánh giá từng nhà cung cấp "
-             "theo từng tiêu chí sử dụng thang đo ngôn ngữ (Very Poor -> Excellent).", 
-             "guide_topsis_rating")
+            ("Bước 1: Chọn chuyên gia", 
+             "Trong tab 'TOPSIS Rating':\n"
+             "• Chọn chuyên gia từ dropdown 'Expert'", 
+             None),
+            ("Bước 2: Đánh giá nhà cung cấp", 
+             "Đánh giá từng nhà cung cấp theo từng tiêu chí:\n"
+             "• Chọn khoảng giá trị từ dropdown (Ví dụ: [3-5] = Fair to Good)\n"
+             "• Làm tương tự cho tất cả các ô trong bảng\n"
+             "• Lặp lại cho tất cả chuyên gia", 
+             "guide_topsis_rating"),
+            ("Bước 3: Tính toán xếp hạng", 
+             "Sau khi hoàn thành đánh giá:\n"
+             "• Nhấn nút 'Calculate TOPSIS Rankings'\n"
+             "• Hệ thống sẽ tự động tính toán điểm số cho từng nhà cung cấp", 
+             None),
+            ("Bước 4: Xem kết quả xếp hạng", 
+             "Chuyển sang tab 'Results' để xem:\n"
+             "• Bảng xếp hạng cuối cùng (Rank 1 = tốt nhất)\n"
+             "• Điểm Closeness Coefficient của từng nhà cung cấp\n"
+             "• Nhà cung cấp có điểm cao nhất là lựa chọn tốt nhất", 
+             None)
         ]
         tab = self.create_tab_content("Xếp hạng TOPSIS", steps)
         self.tabs.addTab(tab, "3. TOPSIS")
@@ -296,15 +331,26 @@ class UserGuideDialog(QDialog):
     def add_results_tab(self):
         """Add Results tab"""
         steps = [
-            ("Xem Kết quả Xếp hạng", 
-             "Tab Results hiển thị bảng xếp hạng cuối cùng và biểu đồ trực quan. "
-             "Nhà cung cấp có điểm số cao nhất là lựa chọn tốt nhất.", 
+            ("Xem kết quả tổng hợp", 
+             "Tab 'Results' hiển thị:\n"
+             "• Trọng số tiêu chí (từ Fuzzy AHP)\n"
+             "• Xếp hạng nhà cung cấp (từ TOPSIS)\n"
+             "• Biểu đồ trực quan dễ hiểu", 
              "guide_final_results"),
-            ("Xuất Báo cáo", 
-             "Sử dụng nút 'Export to Excel' để xuất toàn bộ dữ liệu và kết quả ra file Excel.", 
+            ("Xuất báo cáo Excel", 
+             "Để lưu trữ hoặc chia sẻ kết quả:\n"
+             "• Vào menu 'File' → 'Export Results to Excel'\n"
+             "• Chọn vị trí lưu file\n"
+             "• File Excel sẽ chứa đầy đủ dữ liệu và kết quả phân tích", 
+             None),
+            ("Lưu dự án", 
+             "Nhớ lưu dự án thường xuyên:\n"
+             "• Nhấn Ctrl+S (hoặc File → Save Project)\n"
+             "• Dự án được lưu trong file .mcdm\n"
+             "• Có thể mở lại bất cứ lúc nào từ menu 'Open'", 
              None)
         ]
-        tab = self.create_tab_content("Kết quả & Báo cáo", steps)
+        tab = self.create_tab_content("Kết quả & Xuất báo cáo", steps)
         self.tabs.addTab(tab, "4. Kết quả")
 
     def find_image_file(self, basename):

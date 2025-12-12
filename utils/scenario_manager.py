@@ -107,22 +107,34 @@ class ScenarioManager:
             topsis_copied = 0
             topsis_skipped = 0
             try:
+                # First check if source has any TOPSIS ratings
                 cursor.execute("""
-                    INSERT INTO topsis_ratings
-                        (project_id, scenario_id, expert_id, alternative_id, criterion_id,
-                         rating_lower, rating_upper)
-                    SELECT project_id, ?, expert_id, alternative_id, criterion_id,
-                           rating_lower, rating_upper
-                    FROM topsis_ratings
+                    SELECT COUNT(*) FROM topsis_ratings 
                     WHERE project_id = ? AND scenario_id = ?
-                """, (new_scenario_id, self.project_id, source_scenario_id))
-                topsis_copied = cursor.rowcount
-                print(f"[Scenario] Copied {topsis_copied} TOPSIS ratings")
+                """, (self.project_id, source_scenario_id))
+                source_count = cursor.fetchone()[0]
+                print(f"[Scenario] Source scenario {source_scenario_id} has {source_count} TOPSIS ratings")
+                
+                if source_count > 0:
+                    cursor.execute("""
+                        INSERT INTO topsis_ratings
+                            (project_id, scenario_id, expert_id, alternative_id, criterion_id,
+                             rating_lower, rating_upper)
+                        SELECT project_id, ?, expert_id, alternative_id, criterion_id,
+                               rating_lower, rating_upper
+                        FROM topsis_ratings
+                        WHERE project_id = ? AND scenario_id = ?
+                    """, (new_scenario_id, self.project_id, source_scenario_id))
+                    topsis_copied = cursor.rowcount
+                    print(f"[Scenario] Copied {topsis_copied} TOPSIS ratings")
+                else:
+                    print(f"[Scenario] No TOPSIS ratings to copy from scenario {source_scenario_id}")
             except Exception as e:
                 # If TOPSIS copy fails (e.g., FK constraint), continue without it
                 # User can manually re-enter ratings in new scenario
-                topsis_skipped = cursor.rowcount if hasattr(cursor, 'rowcount') else 0
-                print(f"[Scenario] Warning: Could not copy TOPSIS ratings: {e}")
+                print(f"[Scenario] Error copying TOPSIS ratings: {e}")
+                import traceback
+                traceback.print_exc()
                 print(f"[Scenario] Scenario created but TOPSIS ratings need manual entry")
                 # Don't raise - allow scenario creation to succeed
             

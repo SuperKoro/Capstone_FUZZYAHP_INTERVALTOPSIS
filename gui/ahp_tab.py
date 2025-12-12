@@ -523,10 +523,6 @@ class AHPTab(QWidget):
             
             # Display results (consistency info not available from DB, will show as "-")
             self.display_hierarchical_weights(global_weights, consistency_info={})
-            
-            print(f"[AHP Auto-Load] Loaded existing weights for {len(global_weights)} criteria")
-        else:
-            print("[AHP Auto-Load] No existing weights found")
     
     def populate_expert_table(self):
         """Populate expert table"""

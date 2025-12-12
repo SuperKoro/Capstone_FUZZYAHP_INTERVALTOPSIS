@@ -128,6 +128,16 @@ class FuzzyAHP:
         sum_r_m = np.sum(fuzzy_r[:, 1])
         sum_r_u = np.sum(fuzzy_r[:, 2])
         
+        # Check for zero sums (incomplete comparisons or invalid matrix)
+        epsilon = 1e-10
+        if abs(sum_r_l) < epsilon or abs(sum_r_m) < epsilon or abs(sum_r_u) < epsilon:
+            # Fallback to equal weights when sum is zero
+            print("Warning: Fuzzy weight sum is zero or near-zero. Using equal weights.")
+            print("This usually indicates incomplete pairwise comparisons.")
+            fuzzy_weights = np.ones((n, 3)) / n
+            # Equal weights: (1/n, 1/n, 1/n) for all criteria
+            return fuzzy_weights
+        
         # Inverse of sum: (l, m, u)^-1 = (1/u, 1/m, 1/l)
         inv_sum_l = 1 / sum_r_u
         inv_sum_m = 1 / sum_r_m
@@ -297,11 +307,11 @@ class FuzzyAHP:
         Returns:
             Fuzzy comparison matrix (n, n, 3)
         """
-        matrix = np.zeros((n_criteria, n_criteria, 3))
+        # IMPORTANT: Initialize with (1, 1, 1) for all cells (equally important)
+        # This ensures incomplete comparisons don't cause zero weights
+        matrix = np.ones((n_criteria, n_criteria, 3))
         
-        # Set diagonal to (1, 1, 1)
-        for i in range(n_criteria):
-            matrix[i, i] = [1, 1, 1]
+        # Diagonal stays as (1, 1, 1) - already set by ones()
         
         # Create ID to index mapping if criteria_ids provided
         if criteria_ids:
