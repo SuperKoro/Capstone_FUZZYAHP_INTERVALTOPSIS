@@ -638,21 +638,49 @@ class SensitivityAnalysisTab(QWidget):
             # Then use only leaf weights for TOPSIS
             leaf_base_weights = np.array([c['weight'] for c in self.leaf_criteria])
             is_benefit = np.array([c['is_benefit'] for c in self.leaf_criteria])
+            
+            # Validation: Ensure leaf criteria count matches decision matrix columns
+            assert len(is_benefit) == decision_matrix.shape[1], \
+                f"Mismatch: {len(is_benefit)} leaf criteria but {decision_matrix.shape[1]} matrix columns!"
         else:
             # LEAF PERTURBATION: Direct weight change
             leaf_base_weights = np.array([c['weight'] for c in self.leaf_criteria])
             is_benefit = np.array([c['is_benefit'] for c in self.leaf_criteria])
-            
-            # Check if this specific leaf has zero weight
-            leaf_weight = selected_criterion.get('weight', 0) or 0
-            if leaf_weight == 0:
-                QMessageBox.warning(
-                    self, "Zero Weight",
-                    f"Cannot analyze '{criterion_name}' - it has zero weight!\n\n"
-                    f"Please complete AHP evaluation first."
-                )
-                return
         
+        # NEW: Warning for low-weight criteria (likely to show flat curves)
+        criterion_weight = selected_criterion.get('weight', 0) or 0
+        if criterion_weight == 0:
+            QMessageBox.warning(
+                self, "Zero Weight",
+                f"Cannot analyze '{criterion_name}' - it has zero weight!\\n\\n"
+                f"Please complete AHP evaluation first."
+            )
+            return
+        elif criterion_weight < 0.05:  # Less than 5%
+            reply = QMessageBox.warning(
+                self, "⚠️ Low Weight Criterion Detected",
+                f"<b>'{criterion_name}'</b> has a very low weight: <b>{criterion_weight*100:.2f}%</b><br><br>"
+                
+                f"<b style='color: #e67e22;'>⚠️ Why This Matters:</b><br>"
+                f"Sensitivity analysis may show minimal variation (flat curves) because:<br>"
+                f"• This criterion has little impact on overall rankings<br>"
+                f"• A ±20% perturbation creates only ±<b>{criterion_weight*0.2*100:.3f}%</b> absolute change<br><br>"
+                
+                f"<b style='color: #27ae60;'>✓ This is EXPECTED behavior</b><br>"
+                f"It shows your decision is <u>robust</u> to changes in this less important criterion!<br><br>"
+                
+                f"<b style='color: #3498db;'>💡 Recommendations:</b><br>"
+                f"• Try a wider perturbation range (±50%) for more visible effects<br>"
+                f"• Analyze more important criteria (weight {'>'} 5%) instead<br>"
+                f"• Review AHP weights if this criterion should be more important<br><br>"
+                
+                f"<b>Continue with analysis anyway?</b>",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.No:
+                return
+            
         # Show loading cursor
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         self.run_button.setEnabled(False)
@@ -673,8 +701,16 @@ class SensitivityAnalysisTab(QWidget):
                 )
             else:
                 # Leaf perturbation - use standard analysis
-                # Find index of this leaf in leaf_criteria
-                leaf_idx = next(i for i, lc in enumerate(self.leaf_criteria) if lc['id'] == criterion_id)
+                # Find index of this leaf in leaf_criteria (with defensive error handling)
+                try:
+                    leaf_idx = next(i for i, lc in enumerate(self.leaf_criteria) if lc['id'] == criterion_id)
+                except StopIteration:
+                    QMessageBox.critical(
+                        self, "Data Error",
+                        f"Criterion '{criterion_name}' not found in leaf criteria!\n\n"
+                        f"This may indicate a data inconsistency. Please reload the project."
+                    )
+                    return
                 
                 results = SensitivityAnalysis.weight_perturbation_analysis(
                     decision_matrix=decision_matrix,
@@ -719,6 +755,9 @@ class SensitivityAnalysisTab(QWidget):
         CC_matrix = crit_data['closeness_coefficients']
         analyzed_alts = crit_data.get('analyzed_alternatives', range(len(self.alternatives)))
         
+        # Get criterion weight for display
+        criterion_weight = next((c['weight'] for c in self.criteria if c['name'] == criterion_name), 0)
+        
         # Plot lines for each alternative with consistent colors
         for alt_idx in analyzed_alts:
             alt_name = self.alternatives[alt_idx]['name']
@@ -753,7 +792,8 @@ class SensitivityAnalysisTab(QWidget):
         
         # Styling
         self.axes.set_title(
-            f"Sensitivity Analysis: {criterion_name}",
+            f"Sensitivity Analysis: {criterion_name}\n"
+            f"(Current Weight: {criterion_weight*100:.2f}%)",
             fontsize=13,
             fontweight='bold',
             pad=15
