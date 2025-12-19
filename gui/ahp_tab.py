@@ -891,7 +891,7 @@ class AHPTab(QWidget):
         
         scale_combo.setStyleSheet("""
             QComboBox {
-                font-size: 12px;
+                font-size: 13px;
                 padding: 5px;
                 border: 1px solid #ccc;
                 border-radius: 4px;
@@ -906,11 +906,12 @@ class AHPTab(QWidget):
                 border: 1px solid #ccc;
                 background-color: white;
                 outline: none;
+                font-size: 13px;
             }
             QComboBox QListView::item {
                 border-bottom: 1px solid #e0e0e0;  /* Separator line */
                 padding: 8px;
-                min-height: 25px;
+                min-height: 30px;
                 color: black;
             }
             QComboBox QListView::item:hover {
@@ -925,11 +926,27 @@ class AHPTab(QWidget):
         
         scale_values = [-9, -8, -7, -6, -5, -4, -3, -2, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         
-        # Build items with searchable text
+        # Build items with fuzzy numbers and aligned text
         items = []
         for val in scale_values:
-            desc = FuzzyAHP.LINGUISTIC_SCALE[val][3]
-            label = f"{val:2d}: {desc}"
+            l, m, u, desc = FuzzyAHP.LINGUISTIC_SCALE[val]
+            
+            # Format fuzzy numbers with alignment
+            if val < 0:
+                # For negative values, use fractions: (1/9, 1/9, 1/8)
+                denominator_l = int(1/l) if l > 0 else 1
+                denominator_m = int(1/m) if m > 0 else 1  
+                denominator_u = int(1/u) if u > 0 else 1
+                fuzzy_str = f"(1/{denominator_l}, 1/{denominator_m}, 1/{denominator_u})"
+            else:
+                # For positive values, show as integers
+                if val == 1:
+                    fuzzy_str = "(1, 1, 1)"
+                else:
+                    fuzzy_str = f"({int(l)}, {int(m)}, {int(u)})"
+            
+            # Create aligned label: "-9: (1/9, 1/9, 1/8) Absolutely less important"
+            label = f"{val:2d}: {fuzzy_str:16} {desc}"
             scale_combo.addItem(label, val)
             items.append(label)
         
@@ -1005,6 +1022,16 @@ class AHPTab(QWidget):
             valid, error = Validators.validate_expert_name(name)
             if not valid:
                 QMessageBox.warning(self, "Validation Error", error)
+                return
+            
+            # Check for duplicate name
+            existing_names = [e['name'] for e in self.experts]
+            if name in existing_names:
+                QMessageBox.warning(
+                    self, 
+                    "Duplicate Name", 
+                    f"An expert named '{name}' already exists.\nPlease choose a different name."
+                )
                 return
             # Add to database via UndoManager
             db = self.main_window.get_db_manager()
@@ -1189,6 +1216,29 @@ class AHPTab(QWidget):
             if not experts_to_import:
                 QMessageBox.warning(self, "Warning", "No valid experts to import.")
                 return
+            
+            # Check for duplicate names and warn user
+            existing_names = [e['name'] for e in self.experts]
+            duplicate_names = []
+            for expert in experts_to_import:
+                if expert['name'] in existing_names:
+                    duplicate_names.append(expert['name'])
+            
+            if duplicate_names:
+                dup_list = "\n• ".join(duplicate_names)
+                reply = QMessageBox.question(
+                    self,
+                    "Duplicate Expert Names Detected",
+                    f"The following expert name(s) already exist in this project:\n\n• {dup_list}\n\n"
+                    "These experts will be imported with '(Imported N)' suffix added to their names.\n\n"
+                    "Do you want to continue with the import?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No
+                )
+                
+                if reply == QMessageBox.StandardButton.No:
+                    return
+
 
             # Execute command
             db = self.main_window.get_db_manager()

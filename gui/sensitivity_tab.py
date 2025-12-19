@@ -55,7 +55,6 @@ class SensitivityAnalysisTab(QWidget):
         """Called when tab becomes visible - auto-load data if needed"""
         super().showEvent(event)
         if not self.data_loaded and self.main_window.get_db_manager():
-            print("[Sensitivity] Tab shown, auto-loading data...")
             self.load_data()
             self.data_loaded = True
     
@@ -185,7 +184,6 @@ class SensitivityAnalysisTab(QWidget):
     
     def manual_reload_data(self):
         """Manually reload data - triggered by Reload button"""
-        print("[Sensitivity] Manual reload triggered")
         self.data_loaded = False  # Reset flag
         self.load_data()
         self.data_loaded = True
@@ -197,11 +195,8 @@ class SensitivityAnalysisTab(QWidget):
     
     def load_data(self):
         """Load criteria and alternatives for current scenario"""
-        print(f"[Sensitivity] load_data() called, project_id={self.main_window.get_project_id()}")
-        
         db = self.main_window.get_db_manager()
         if not db:
-            print("[Sensitivity] No database manager!")
             return
         
         with db as database:
@@ -231,9 +226,6 @@ class SensitivityAnalysisTab(QWidget):
             index = self.criterion_combo.findData(current_criterion_id)
             if index >= 0:
                 self.criterion_combo.setCurrentIndex(index)
-                print(f"[Sensitivity] Restored selection: {self.criterion_combo.currentText()}")
-        
-        print(f"[Sensitivity] Loaded {len(self.criteria)} criteria, {len(self.alternatives)} alternatives")
         
         # Reset state
         self.current_results = None
@@ -296,7 +288,6 @@ class SensitivityAnalysisTab(QWidget):
     def run_analysis(self):
         """Execute sensitivity analysis"""
         # IMPORTANT: Always refresh data before analysis to ensure we have latest alternatives/criteria
-        print("[Sensitivity] Auto-refreshing data before analysis...")
         self.load_data()
         
         if not self.criteria or not self.alternatives:
@@ -369,7 +360,6 @@ class SensitivityAnalysisTab(QWidget):
             
         except Exception as e:
             QMessageBox.critical(self, "Analysis Error", f"Error during analysis:\n{str(e)}")
-            print(f"[Sensitivity] Error: {e}")
             import traceback
             traceback.print_exc()
         
@@ -714,6 +704,5 @@ class SensitivityAnalysisTab(QWidget):
                 f"Failed to export results:\n{str(e)}\n\n"
                 f"Please ensure you have pandas and xlsxwriter installed."
             )
-            print(f"[Sensitivity Export] Error: {e}")
             import traceback
             traceback.print_exc()

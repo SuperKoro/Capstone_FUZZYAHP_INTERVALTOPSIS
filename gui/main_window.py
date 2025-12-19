@@ -223,6 +223,29 @@ class MainWindow(QMainWindow):
         self.scenario_combo = QComboBox()
         self.scenario_combo.setMinimumWidth(200)
         self.scenario_combo.setToolTip("Select active scenario")
+        self.scenario_combo.setStyleSheet("""
+            QComboBox {
+                color: #2c3e50;
+                font-weight: bold;
+                font-size: 11pt;
+                background-color: white;
+                border: 1px solid #bdc3c7;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QComboBox:hover {
+                border: 1px solid #3498db;
+            }
+            QComboBox::drop-down {
+                border: none;
+            }
+            QComboBox QAbstractItemView {
+                color: #2c3e50;
+                background-color: white;
+                selection-background-color: #3498db;
+                selection-color: white;
+            }
+        """)
         self.scenario_combo.currentIndexChanged.connect(self.on_scenario_changed)
         toolbar.addWidget(self.scenario_combo)
         
