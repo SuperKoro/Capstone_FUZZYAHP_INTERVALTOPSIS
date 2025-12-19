@@ -18,14 +18,9 @@ class UserGuideDialog(QDialog):
         self.setWindowTitle("Hướng dẫn sử dụng - User Guide")
         self.setGeometry(100, 100, 1100, 800)
         
-        # Get the artifacts directory path
-        self.artifacts_dir = os.path.join(
-            os.path.expanduser("~"),
-            ".gemini",
-            "antigravity",
-            "brain",
-            "166dbfc7-5412-46ec-abff-6279f0f6eb85"
-        )
+        # Get the assets directory path relative to project root
+        current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.artifacts_dir = os.path.join(current_dir, "assets", "guide_images")
         
         self.init_ui()
     
@@ -259,12 +254,12 @@ class UserGuideDialog(QDialog):
              "• Nhấn nút 'Add' ở phần Criteria để thêm tiêu chí chính\n"
              "• Nhấn nút 'Add' bên cạnh tiêu chí để thêm tiêu chí con (sub-criteria)\n"
              "• Chọn loại: Cost (giá trị thấp tốt hơn) hoặc Benefit (giá trị cao tốt hơn)", 
-             "Criteria2"),
+             "guide_criteria_setup"),
             ("Bước 3: Thêm nhà cung cấp", 
              "Ở phần 'Alternatives (Suppliers) Management':\n"
              "• Nhấn nút 'Add Alternative' để thêm từng nhà cung cấp cần đánh giá\n"
              "• Nhập tên và mô tả cho mỗi nhà cung cấp", 
-             "Alternatives")
+             "guide_project_info")
         ]
         tab = self.create_tab_content("Thiết lập Dự án", steps)
         self.tabs.addTab(tab, "1. Thiết lập")
@@ -276,14 +271,14 @@ class UserGuideDialog(QDialog):
              "Trong tab 'Fuzzy AHP Evaluation':\n"
              "• Nhấn nút 'Add Expert' để thêm chuyên gia\n"
              "• Nhập tên chuyên gia", 
-             "Expert"),
+             "guide_ahp_expert"),
             ("Bước 2: So sánh tiêu chí", 
              "Thực hiện so sánh từng cặp tiêu chí:\n"
              "• Chọn chuyên gia từ dropdown\n"
              "• Nhấp vào 'Goal' trong cây Criteria để so sánh các tiêu chí chính\n"
              "• Nhấp vào từng tiêu chí để so sánh các tiêu chí con của nó\n"
              "• Chọn mức độ quan trọng từ dropdown (từ -9 đến +9)", 
-             "Criteria1"),
+             "guide_fuzzy_ahp_input"),
             ("Bước 3: Tính toán trọng số", 
              "Sau khi hoàn thành tất cả so sánh:\n"
              "• Nhấn nút 'Calculate All Weights' để tính toán\n"

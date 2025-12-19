@@ -288,7 +288,7 @@ class WelcomeDialog(QDialog):
             try:
                 dt = datetime.fromisoformat(last_mod)
                 date_str = dt.strftime("%b %d, %Y %I:%M %p")
-            except:
+            except (ValueError, TypeError, AttributeError):
                 date_str = last_mod
             
             date_item = QTableWidgetItem(date_str)

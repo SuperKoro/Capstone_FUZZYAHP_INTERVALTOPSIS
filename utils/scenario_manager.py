@@ -98,14 +98,10 @@ class ScenarioManager:
                     FROM ahp_comparisons
                     WHERE project_id = ? AND scenario_id = ?
                 """, (new_scenario_id, self.project_id, source_scenario_id))
-                print(f"[Scenario] Copied {cursor.rowcount} AHP comparisons")
             except Exception as e:
-                print(f"[Scenario] Error copying AHP comparisons: {e}")
                 raise
             
             # Deep copy TOPSIS ratings - skip if fails to avoid blocking scenario creation
-            topsis_copied = 0
-            topsis_skipped = 0
             try:
                 # First check if source has any TOPSIS ratings
                 cursor.execute("""
@@ -113,7 +109,6 @@ class ScenarioManager:
                     WHERE project_id = ? AND scenario_id = ?
                 """, (self.project_id, source_scenario_id))
                 source_count = cursor.fetchone()[0]
-                print(f"[Scenario] Source scenario {source_scenario_id} has {source_count} TOPSIS ratings")
                 
                 if source_count > 0:
                     cursor.execute("""
@@ -125,18 +120,10 @@ class ScenarioManager:
                         FROM topsis_ratings
                         WHERE project_id = ? AND scenario_id = ?
                     """, (new_scenario_id, self.project_id, source_scenario_id))
-                    topsis_copied = cursor.rowcount
-                    print(f"[Scenario] Copied {topsis_copied} TOPSIS ratings")
-                else:
-                    print(f"[Scenario] No TOPSIS ratings to copy from scenario {source_scenario_id}")
-            except Exception as e:
+            except Exception:
                 # If TOPSIS copy fails (e.g., FK constraint), continue without it
                 # User can manually re-enter ratings in new scenario
-                print(f"[Scenario] Error copying TOPSIS ratings: {e}")
-                import traceback
-                traceback.print_exc()
-                print(f"[Scenario] Scenario created but TOPSIS ratings need manual entry")
-                # Don't raise - allow scenario creation to succeed
+                pass  # Don't raise - allow scenario creation to succeed
             
             db.conn.commit()
         
@@ -418,10 +405,4 @@ class ScenarioManager:
 # ============================================================================
 
 if __name__ == "__main__":
-    print("ScenarioManager module created successfully!")
-    print("Ready for integration with GUI and database.")
-    print("\nKey features:")
-    print("  ✓ Deep Copy strategy (no delta storage)")
-    print("  ✓ Complete scenario independence")
-    print("  ✓ Scenario comparison with agreement metrics")
-    print("  ✓ Rank change detection")
+    pass  # Module loaded successfully

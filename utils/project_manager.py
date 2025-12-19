@@ -84,7 +84,7 @@ class ProjectManager:
                 try:
                     mtime = os.path.getmtime(p['path'])
                     p['last_modified'] = datetime.fromtimestamp(mtime).isoformat()
-                except:
+                except (OSError, IOError, PermissionError):
                     p['last_modified'] = p['last_opened']
                 valid_projects.append(p)
             else:
