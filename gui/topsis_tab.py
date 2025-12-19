@@ -112,8 +112,10 @@ class TOPSISTab(QWidget):
             return
         
         with db as database:
-            # Load criteria
-            self.criteria = database.get_criteria(self.main_window.get_project_id())
+            # Load criteria - ONLY LEAF CRITERIA (no parents)
+            # Parent criteria should not be rated in TOPSIS to avoid double counting
+            # Their weights are already incorporated through hierarchical AHP
+            self.criteria = database.get_leaf_criteria(self.main_window.get_project_id())
             
             # Load alternatives
             self.alternatives = database.get_alternatives(self.main_window.get_project_id())

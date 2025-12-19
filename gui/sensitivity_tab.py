@@ -45,7 +45,9 @@ class SensitivityAnalysisTab(QWidget):
         super().__init__()
         self.main_window = main_window
         self.current_results = None
-        self.criteria = []
+        self.criteria = []  # ALL criteria (parents + leaves)
+        self.leaf_criteria = []  # Leaf criteria only (for TOPSIS matrix)
+        self.criteria_tree = {}  # Hierarchy tree with local weights
         self.alternatives = []
         self.experts = []
         self.data_loaded = False  # Track if data has been loaded
@@ -200,16 +202,26 @@ class SensitivityAnalysisTab(QWidget):
             return
         
         with db as database:
-            # Load leaf criteria only (same as TOPSIS)
+            # Load ALL criteria (both parents and leaves) for sensitivity dropdown
             all_criteria = database.get_criteria(self.main_window.get_project_id())
             
             if all_criteria:
                 criteria_ids = {c['id'] for c in all_criteria}
                 parent_ids = {c['parent_id'] for c in all_criteria if c.get('parent_id')}
                 leaf_ids = criteria_ids - parent_ids
-                self.criteria = [c for c in all_criteria if c['id'] in leaf_ids]
+                
+                # Store ALL criteria for dropdown selection
+                self.criteria = all_criteria
+                
+                # Store LEAF criteria separately for TOPSIS matrix
+                self.leaf_criteria = [c for c in all_criteria if c['id'] in leaf_ids]
+                
+                # Build hierarchy tree and calculate local weights
+                self.criteria_tree = self._build_criteria_tree(all_criteria, parent_ids)
             else:
                 self.criteria = []
+                self.leaf_criteria = []
+                self.criteria_tree = {}
             
             self.alternatives = database.get_alternatives(self.main_window.get_project_id())
             self.experts = database.get_experts(self.main_window.get_project_id())
@@ -219,7 +231,12 @@ class SensitivityAnalysisTab(QWidget):
         
         self.criterion_combo.clear()
         for c in self.criteria:
-            self.criterion_combo.addItem(c['name'], c['id'])
+            # Add visual distinction for parent vs leaf
+            if self._is_parent(c['id']):
+                display_name = f"📁 {c['name']} (Parent)"
+            else:
+                display_name = f"📄 {c['name']}"
+            self.criterion_combo.addItem(display_name, c['id'])
         
         # Restore previous selection if criterion still exists
         if current_criterion_id:
@@ -231,6 +248,250 @@ class SensitivityAnalysisTab(QWidget):
         self.current_results = None
         self.export_button.setEnabled(False)
     
+    def _build_criteria_tree(self, all_criteria, parent_ids):
+        """
+        Build hierarchy tree with local weights for sensitivity analysis
+        
+        Returns:
+            Dict mapping criterion_id to {
+                'criterion': criterion_dict,
+                'is_parent': bool,
+                'children': [child_dicts],
+                'local_weight': float (for children only)
+            }
+        """
+        tree = {}
+        
+        for criterion in all_criteria:
+            cid = criterion['id']
+            tree[cid] = {
+                'criterion': criterion,
+                'is_parent': cid in parent_ids,
+                'children': [],
+                'local_weight': None
+            }
+        
+        # Build parent-child relationships and calculate local weights
+        for criterion in all_criteria:
+            criterion_id = criterion['id']  # Use explicit variable name
+            parent_id = criterion.get('parent_id')
+            if parent_id and parent_id in tree:
+                # This is a child
+                tree[parent_id]['children'].append(criterion)
+                
+                # Calculate local weight (child_global / parent_global)
+                parent_weight = tree[parent_id]['criterion'].get('weight', 0) or 0
+                child_weight = criterion.get('weight', 0) or 0
+                
+                if parent_weight > 0:
+                    local_weight = child_weight / parent_weight
+                else:
+                    local_weight = 0
+                
+                tree[criterion_id]['local_weight'] = local_weight  # FIX: use criterion_id, not cid
+        
+        return tree
+    
+    def _is_parent(self, criterion_id):
+        """Check if a criterion has children (is a parent)"""
+        return self.criteria_tree.get(criterion_id, {}).get('is_parent', False)
+    
+    def _get_children(self, criterion_id):
+        """Get all child criteria for a parent"""
+        return self.criteria_tree.get(criterion_id, {}).get('children', [])
+    
+    def _recalculate_global_weights(self, perturbed_criterion_id, new_weight, all_weights_dict):
+        """
+        Recalculate global weights after perturbing a criterion
+        
+        Args:
+            perturbed_criterion_id: ID of the perturbed criterion
+            new_weight: New weight value
+            all_weights_dict: Current weights {criterion_id: weight}
+            
+        Returns:
+            np.array of weights for LEAF criteria only (for TOPSIS)
+        """
+        # Update the perturbed criterion
+        updated_weights = all_weights_dict.copy()
+        updated_weights[perturbed_criterion_id] = new_weight
+        
+        # If it's a parent, propagate to children
+        if self._is_parent(perturbed_criterion_id):
+            children = self._get_children(perturbed_criterion_id)
+            for child in children:
+                child_id = child['id']
+                local_weight = self.criteria_tree[child_id]['local_weight'] or 0
+                # Global weight = parent_weight × local_weight
+                updated_weights[child_id] = new_weight * local_weight
+                
+                # If child is also a parent, recursively propagate
+                if self._is_parent(child_id):
+                    self._propagate_to_descendants(child_id, updated_weights[child_id], updated_weights)
+        
+        # Extract leaf weights only in the correct order
+        leaf_weights = []
+        for leaf in self.leaf_criteria:
+            leaf_weights.append(updated_weights.get(leaf['id'], 0))
+        
+        return np.array(leaf_weights)
+    
+    def _propagate_to_descendants(self, parent_id, parent_weight, updated_weights):
+        """Recursively propagate weight changes to all descendants"""
+        children = self._get_children(parent_id)
+        for child in children:
+            child_id = child['id']
+            local_weight = self.criteria_tree[child_id]['local_weight'] or 0
+            updated_weights[child_id] = parent_weight * local_weight
+            
+            # Recurse if this child is also a parent
+            if self._is_parent(child_id):
+                self._propagate_to_descendants(child_id, updated_weights[child_id], updated_weights)
+    
+    def _run_parent_perturbation(self, criterion_id, criterion_name, base_weights_dict,
+                                 decision_matrix, is_benefit, perturbation_range, n_steps, top_n):
+        """
+        Run sensitivity analysis for PARENT criterion with weight propagation
+        
+        Args:
+            criterion_id: ID of parent criterion to perturb
+            criterion_name: Name of criterion for results
+            base_weights_dict: Dict of {criterion_id: weight} for all criteria
+            decision_matrix: TOPSIS decision matrix (alternatives × leaf_criteria × 2)
+            is_benefit: Boolean array for leaf criteria
+            perturbation_range: ±% range
+            n_steps: Number of perturbation steps
+            top_n: Top N alternatives to show (None = all)
+            
+        Returns:
+            Results dict compatible with SensitivityAnalysis format
+        """
+        # Generate perturbation percentages
+        perturbations = np.linspace(-perturbation_range * 100, perturbation_range * 100, n_steps)
+        
+        # Get base parent weight
+        base_parent_weight = base_weights_dict[criterion_id]
+        
+        # Storage for results
+        n_alternatives = len(self.alternatives)
+        CC_matrix = np.zeros((n_alternatives, n_steps))
+        rankings_list = []
+        weights_at_steps = []
+        
+        # Identify all parent criteria for normalization
+        parent_criteria = [c for c in self.criteria if self._is_parent(c['id'])]
+        parent_ids = [p['id'] for p in parent_criteria]
+        parent_base_weights = np.array([base_weights_dict[pid] for pid in parent_ids])
+        
+        # DEBUG: Print parent structure
+        
+        # Find index of our target parent in the parent list
+        target_parent_idx = parent_ids.index(criterion_id)
+        
+        # Run TOPSIS at each perturbation step
+        for step_idx, pert_pct in enumerate(perturbations):
+            # Calculate delta for the target parent
+            delta = base_parent_weight * (pert_pct / 100.0)
+            
+            # Normalize ALL parent weights (this redistributes weight among parents)
+            normalized_parent_weights = SensitivityAnalysis.normalize_weights_after_perturbation(
+                parent_base_weights, target_parent_idx, delta
+            )
+            
+            # DEBUG: Print first step details
+            if step_idx == 0:
+                pass  # Debug logging removed
+            
+            # Create updated weights dict with normalized parent weights
+            updated_weights_dict = base_weights_dict.copy()
+            for i, pid in enumerate(parent_ids):
+                updated_weights_dict[pid] = normalized_parent_weights[i]
+            
+            # Now propagate parent weights to their children
+            for i, pid in enumerate(parent_ids):
+                parent_new_weight = normalized_parent_weights[i]
+                children = self._get_children(pid)
+                
+                for child in children:
+                    child_id = child['id']
+                    local_weight = self.criteria_tree[child_id]['local_weight'] or 0
+                    # Child global weight = parent_weight × local_weight
+                    updated_weights_dict[child_id] = parent_new_weight * local_weight
+                    
+                    # Recursively propagate if child is also a parent
+                    if self._is_parent(child_id):
+                        self._propagate_to_descendants(child_id, updated_weights_dict[child_id], updated_weights_dict)
+            
+            # Extract leaf weights in correct order
+            leaf_weights = np.array([updated_weights_dict.get(lc['id'], 0) for lc in self.leaf_criteria])
+            
+            # DEBUG: Print first step leaf weights
+            if step_idx == 0:
+                pass  # Debug logging removed
+            
+            # Leaf weights should already sum to 1.0 after parent normalization + propagation
+            # Only normalize if there's significant deviation (floating point errors)
+            weight_sum = leaf_weights.sum()
+            if abs(weight_sum - 1.0) > 0.01:  # More than 1% deviation = error
+                if weight_sum > 0:
+                    leaf_weights = leaf_weights / weight_sum
+            
+            weights_at_steps.append(normalized_parent_weights[target_parent_idx])
+            
+            # Run TOPSIS with updated leaf weights
+            CC, _ = IntervalTOPSIS.rank_alternatives(
+                decision_matrix,
+                leaf_weights,
+                is_benefit
+            )
+            
+            CC_matrix[:, step_idx] = CC
+            
+            # Get ranking (sorted indices, best first)
+            ranking = np.argsort(-CC).tolist()
+            rankings_list.append(ranking)
+        
+        # Detect rank reversals
+        base_idx = n_steps // 2  # Middle point (0% perturbation)
+        base_ranking = rankings_list[base_idx]
+        
+        rank_reversal_points = []
+        for i, ranking in enumerate(rankings_list):
+            if ranking != base_ranking and i != base_idx:
+                changes = SensitivityAnalysis._detect_ranking_changes(
+                    base_ranking, ranking, [a['name'] for a in self.alternatives]
+                )
+                if changes:
+                    rank_reversal_points.append({
+                        'perturbation_pct': perturbations[i],
+                        'changes': changes
+                    })
+        
+        # Determine critical perturbation (first reversal)
+        critical_pert = rank_reversal_points[0]['perturbation_pct'] if rank_reversal_points else None
+        
+        # Filter by top N if requested
+        analyzed_alts = list(range(n_alternatives))
+        if top_n and top_n < n_alternatives:
+            # Get top N from base ranking
+            analyzed_alts = base_ranking[:top_n]
+        
+        # Build results dict (compatible with SensitivityAnalysis format)
+        results = {
+            criterion_name: {
+                'perturbations': perturbations,
+                'closeness_coefficients': CC_matrix,
+                'rankings': rankings_list,
+                'weights_at_perturbations': weights_at_steps,
+                'rank_reversal_points': rank_reversal_points,
+                'critical_perturbation': critical_pert,
+                'analyzed_alternatives': analyzed_alts
+            },
+            'stability_index': 1.0 - (len(rank_reversal_points) / n_steps)  # Simple stability metric
+        }
+        
+        return results
+
     def build_decision_matrix(self):
         """Build decision matrix from TOPSIS ratings"""
         db = self.main_window.get_db_manager()
@@ -239,7 +500,7 @@ class SensitivityAnalysisTab(QWidget):
         
         try:
             n_alternatives = len(self.alternatives)
-            n_criteria = len(self.criteria)
+            n_criteria = len(self.leaf_criteria)  # Use LEAF criteria only for matrix
             
             # Aggregate expert ratings (same as TOPSIS tab)
             expert_matrices = []
@@ -262,7 +523,7 @@ class SensitivityAnalysisTab(QWidget):
                     }
                     
                     for i, alt in enumerate(self.alternatives):
-                        for j, crit in enumerate(self.criteria):
+                        for j, crit in enumerate(self.leaf_criteria):  # Iterate LEAF criteria only
                             if (alt['id'], crit['id']) in rating_map:
                                 matrix[i, j] = rating_map[(alt['id'], crit['id'])]
                             else:
@@ -327,9 +588,70 @@ class SensitivityAnalysisTab(QWidget):
         if decision_matrix is None:
             return
         
-        # Get weights and is_benefit
-        base_weights = np.array([c['weight'] for c in self.criteria])
-        is_benefit = np.array([c['is_benefit'] for c in self.criteria])
+        # Get selected criterion
+        selected_criterion = self.criteria[criterion_idx]
+        criterion_id = selected_criterion['id']
+        criterion_name = selected_criterion['name']
+        
+        # Determine if it's a parent or leaf criterion
+        is_parent_criterion = self._is_parent(criterion_id)
+        
+        if is_parent_criterion:
+            # PARENT PERTURBATION: Need to propagate to children
+            # Get base weights for all criteria as dict
+            base_weights_dict = {c['id']: c['weight'] for c in self.criteria}
+            
+            # Count parent criteria
+            parent_criteria_list = [c for c in self.criteria if self._is_parent(c['id'])]
+            n_parents = len(parent_criteria_list)
+            
+            # Check if parent has zero weight
+            parent_weight = selected_criterion.get('weight', 0) or 0
+            if parent_weight == 0:
+                QMessageBox.warning(
+                    self, "Zero Weight",
+                    f"Cannot analyze '{criterion_name}' - it has zero weight!\n\n"
+                    f"This parent criterion and its children have not been assigned "
+                    f"importance in the AHP evaluation.\n\n"
+                    f"Please:\n"
+                    f"1. Go to 'Fuzzy AHP Evaluation' tab\n"
+                    f"2. Complete pairwise comparisons for all criteria groups\n"
+                    f"3. Click 'Calculate Weights'\n\n"
+                    f"Then return here to run sensitivity analysis."
+                )
+                return
+            
+            # Check if this is the ONLY parent (edge case)
+            if n_parents == 1:
+                QMessageBox.warning(
+                    self, "Single Parent Limitation",
+                    f"'{criterion_name}' is the ONLY parent criterion in your hierarchy.\n\n"
+                    f"⚠️ Parent perturbation requires multiple parents to redistribute weights.\n\n"
+                    f"Recommendation:\n"
+                    f"• Analyze child criteria instead (they show meaningful sensitivity)\n"
+                    f"• Or add more parent criteria groups to your hierarchy\n\n"
+                    f"With only one parent at 100% weight, perturbation has no effect."
+                )
+                return
+            
+            # For parent perturbation, we perturb the parent and propagate to children
+            # Then use only leaf weights for TOPSIS
+            leaf_base_weights = np.array([c['weight'] for c in self.leaf_criteria])
+            is_benefit = np.array([c['is_benefit'] for c in self.leaf_criteria])
+        else:
+            # LEAF PERTURBATION: Direct weight change
+            leaf_base_weights = np.array([c['weight'] for c in self.leaf_criteria])
+            is_benefit = np.array([c['is_benefit'] for c in self.leaf_criteria])
+            
+            # Check if this specific leaf has zero weight
+            leaf_weight = selected_criterion.get('weight', 0) or 0
+            if leaf_weight == 0:
+                QMessageBox.warning(
+                    self, "Zero Weight",
+                    f"Cannot analyze '{criterion_name}' - it has zero weight!\n\n"
+                    f"Please complete AHP evaluation first."
+                )
+                return
         
         # Show loading cursor
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -337,22 +659,38 @@ class SensitivityAnalysisTab(QWidget):
         self.run_button.setText("Analyzing...")
         
         try:
-            # Run analysis
-            results = SensitivityAnalysis.weight_perturbation_analysis(
-                decision_matrix=decision_matrix,
-                base_weights=base_weights,
-                is_benefit=is_benefit,
-                criterion_names=[c['name'] for c in self.criteria],
-                alternative_names=[a['name'] for a in self.alternatives],
-                perturbation_range=perturbation_range,
-                n_steps=n_steps,
-                top_n_alternatives=top_n
-            )
+            if is_parent_criterion:
+                # Parent perturbation - use custom method
+                results = self._run_parent_perturbation(
+                    criterion_id=criterion_id,
+                    criterion_name=criterion_name,
+                    base_weights_dict=base_weights_dict,
+                    decision_matrix=decision_matrix,
+                    is_benefit=is_benefit,
+                    perturbation_range=perturbation_range,
+                    n_steps=n_steps,
+                    top_n=top_n
+                )
+            else:
+                # Leaf perturbation - use standard analysis
+                # Find index of this leaf in leaf_criteria
+                leaf_idx = next(i for i, lc in enumerate(self.leaf_criteria) if lc['id'] == criterion_id)
+                
+                results = SensitivityAnalysis.weight_perturbation_analysis(
+                    decision_matrix=decision_matrix,
+                    base_weights=leaf_base_weights,
+                    is_benefit=is_benefit,
+                    criterion_names=[c['name'] for c in self.leaf_criteria],
+                    alternative_names=[a['name'] for a in self.alternatives],
+                    perturbation_range=perturbation_range,
+                    n_steps=n_steps,
+                    top_n_alternatives=top_n
+                )
             
             self.current_results = results
             
             # Update visualization
-            criterion_name = self.criteria[criterion_idx]['name']
+            # criterion_name already set above
             self.update_chart(results, criterion_name)
             self.update_summary(results, criterion_name)
             

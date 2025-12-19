@@ -416,7 +416,6 @@ class AHPTab(QWidget):
             data = item.data(0, Qt.ItemDataRole.UserRole)
         except RuntimeError:
             # Widget was deleted (happens after refresh)
-            print("Tree item no longer valid, ignoring click")
             return
         
         if not data:

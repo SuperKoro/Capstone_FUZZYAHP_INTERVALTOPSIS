@@ -273,6 +273,36 @@ class DatabaseManager:
         cursor.execute("UPDATE criteria SET weight = ? WHERE id = ?", (weight, criterion_id))
         self.conn.commit()
     
+    def get_leaf_criteria(self, project_id: int) -> List[Dict[str, Any]]:
+        """
+        Get only leaf criteria (criteria without children) for a project
+        
+        Leaf criteria are those that have no sub-criteria underneath them.
+        These are the criteria that should be used in TOPSIS rating matrix
+        to avoid double counting (parent criteria weights are already 
+        incorporated into leaf criteria through hierarchical AHP).
+        
+        Returns:
+            List of leaf criteria with full information (id, name, weight, is_benefit, etc.)
+        """
+        cursor = self.conn.cursor()
+        
+        # Get all criteria
+        cursor.execute("SELECT * FROM criteria WHERE project_id = ? ORDER BY id", (project_id,))
+        all_criteria = [dict(row) for row in cursor.fetchall()]
+        
+        # Find all criteria IDs that are parents (have children)
+        parent_ids = set()
+        for criterion in all_criteria:
+            if criterion['parent_id'] is not None:
+                parent_ids.add(criterion['parent_id'])
+        
+        # Return only criteria that are NOT parents (i.e., leaf criteria)
+        leaf_criteria = [c for c in all_criteria if c['id'] not in parent_ids]
+        
+        return leaf_criteria
+
+    
     # ==================== Alternative Operations ====================
     
     def add_alternative(self, project_id: int, name: str, description: str = "") -> int:

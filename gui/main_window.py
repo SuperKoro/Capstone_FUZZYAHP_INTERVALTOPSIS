@@ -365,24 +365,20 @@ class MainWindow(QMainWindow):
                     # Load data into tabs (with individual error handling)
                     try:
                         self.project_tab.load_data()
-                    except Exception as e:
-                        print(f"Error loading project tab: {e}")
-                    
+                    except Exception:
+                        pass
                     try:
                         self.ahp_tab.load_data()
-                    except Exception as e:
-                        print(f"Error loading AHP tab: {e}")
-                    
+                    except Exception:
+                        pass
                     try:
                         self.topsis_tab.load_data()
-                    except Exception as e:
-                        print(f"Error loading TOPSIS tab: {e}")
-                    
+                    except Exception:
+                        pass
                     try:
                         self.results_tab.load_data()
-                    except Exception as e:
-                        print(f"Error loading results tab: {e}")
-                    
+                    except Exception:
+                        pass
                     # Enable tabs
                     self.set_tabs_enabled(True)
                     
@@ -395,15 +391,13 @@ class MainWindow(QMainWindow):
                     
                     try:
                         self.load_scenarios()
-                    except Exception as e:
-                        print(f"Error loading scenarios: {e}")
-                    
+                    except Exception:
+                        pass
                     # Add to recent projects
                     self.project_manager.add_project(project['name'], file_path)
                     
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load project:\n{str(e)}")
-            print(f"Load project error: {e}")
             import traceback
             traceback.print_exc()
     
@@ -573,8 +567,8 @@ class MainWindow(QMainWindow):
                     self.scenario_combo.setCurrentIndex(i)
                     break
                     
-        except Exception as e:
-            print(f"Error loading scenarios: {e}")
+        except Exception:
+            pass
         finally:
             self.scenario_combo.blockSignals(False)
     
@@ -587,12 +581,10 @@ class MainWindow(QMainWindow):
         if new_scenario_id is None or new_scenario_id == self.current_scenario_id:
             return
         
-        print(f"[Scenario Switch] From {self.current_scenario_id} to {new_scenario_id}")
         self.current_scenario_id = new_scenario_id
         
         # CHANGED: Refresh ALL tabs instead of just current tab
         # This ensures auto-load works regardless of which tab user is on
-        print("[Scenario Switch] Refreshing all tabs...")
         if hasattr(self, 'project_tab'):
             self.project_tab.load_data()
         if hasattr(self, 'ahp_tab'):
@@ -760,7 +752,6 @@ class MainWindow(QMainWindow):
         """Refresh data in currently active tab"""
         current_index = self.tabs.currentIndex()
         
-        print(f"[Refresh] Current tab index: {current_index}")
         
         if current_index == 0:  # Project tab
             self.project_tab.load_data()
