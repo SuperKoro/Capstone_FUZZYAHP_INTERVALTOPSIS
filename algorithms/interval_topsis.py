@@ -255,33 +255,34 @@ class IntervalTOPSIS:
         # Convert to float to avoid integer division issues
         decision_matrix = decision_matrix.astype(float)
         
-        print("\n--- TOPSIS DEBUG LOG ---")
-        print(f"Input Matrix:\n{decision_matrix}")
-        print(f"Weights: {weights}")
-        print(f"Is Benefit: {is_benefit}")
+        # DEBUG: Commented out for production
+        # print("\n--- TOPSIS DEBUG LOG ---")
+        # print(f"Input Matrix:\n{decision_matrix}")
+        # print(f"Weights: {weights}")
+        # print(f"Is Benefit: {is_benefit}")
         
         # Step 1: Normalize the decision matrix
         normalized = cls.normalize_interval_matrix(decision_matrix, is_benefit)
-        print(f"Normalized:\n{normalized}")
+        # print(f"Normalized:\n{normalized}")
         
         # Step 2: Apply weights
         weighted = cls.apply_weights(normalized, weights)
-        print(f"Weighted:\n{weighted}")
+        # print(f"Weighted:\n{weighted}")
         
         # Step 3: Calculate ideal solutions (needs is_benefit)
         PIS, NIS = cls.calculate_ideal_solutions(weighted, is_benefit)
-        print(f"PIS: {PIS}")
-        print(f"NIS: {NIS}")
+        # print(f"PIS: {PIS}")
+        # print(f"NIS: {NIS}")
         
         # Step 4: Calculate distances
         dist_to_PIS, dist_to_NIS = cls.calculate_distances(weighted, PIS, NIS)
-        print(f"Dist to PIS: {dist_to_PIS}")
-        print(f"Dist to NIS: {dist_to_NIS}")
+        # print(f"Dist to PIS: {dist_to_PIS}")
+        # print(f"Dist to NIS: {dist_to_NIS}")
         
         # Step 5: Calculate closeness coefficients
         CC = cls.calculate_closeness_coefficient(dist_to_PIS, dist_to_NIS)
-        print(f"CC: {CC}")
-        print("------------------------\n")
+        # print(f"CC: {CC}")
+        # print("------------------------\n")
         
         # Prepare detailed results
         results = {

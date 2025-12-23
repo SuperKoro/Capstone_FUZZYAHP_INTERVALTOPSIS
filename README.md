@@ -248,8 +248,6 @@ This application is provided as-is for educational and business use.
 For issues or questions:
 - Check the built-in User Guide (F1)
 - Review documentation files
-- Contact development team
-
 ## 🙏 Acknowledgments
 
 Built with:
