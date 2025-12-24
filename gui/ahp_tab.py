@@ -6,7 +6,8 @@ Handles Fuzzy AHP evaluation and weight calculation
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QComboBox, QMessageBox,
                              QFileDialog, QRadioButton, QButtonGroup, QHeaderView, QLineEdit,
-                             QTreeWidget, QTreeWidgetItem, QTextEdit, QTabWidget, QListView)
+                             QTreeWidget, QTreeWidgetItem, QTextEdit, QTabWidget, QListView,
+                             QScrollArea)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 import numpy as np
@@ -74,6 +75,12 @@ class AHPTab(QWidget):
         self.criteria_tree = QTreeWidget()
         self.criteria_tree.setHeaderLabel("Select to Compare")
         self.criteria_tree.itemClicked.connect(self.on_tree_item_clicked)
+        
+        # Prevent collapse: set size policy and minimum height
+        from PyQt6.QtWidgets import QSizePolicy
+        self.criteria_tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.criteria_tree.setMinimumHeight(280)
+        
         left_panel.addWidget(self.criteria_tree)
         
         instructions = QLabel(
@@ -129,54 +136,17 @@ class AHPTab(QWidget):
         # Right panel: Comparison area
         right_layout = QVBoxLayout()
         
-        # Instruction Labels (English & Vietnamese)
-        guide_layout = QHBoxLayout()
+        # Pairwise Comparisons section (with all controls at top)
+        comp_group = QGroupBox("Pairwise Comparisons")
+        comp_layout = QVBoxLayout()
         
-        # English Guide
-        guide_label_en = QLabel(
-            "<b>How to Compare:</b> How important is <b>Criterion 1</b> compared to <b>Criterion 2</b>?<br>"
-            "• Select <b>2 to 9</b> if Criterion 1 is more important.<br>"
-            "• Select <b>-2 to -9</b> if Criterion 2 is more important.<br>"
-            "• Select <b>1</b> if they are equal."
-        )
-        guide_label_en.setStyleSheet("""
-            QLabel {
-                background-color: #e8f4f8;
-                color: #2c3e50;
-                padding: 8px;
-                border-radius: 4px;
-                border: 1px solid #b3e5fc;
-                font-size: 12px;
-            }
-        """)
-        guide_label_en.setWordWrap(True)
-        guide_layout.addWidget(guide_label_en)
+        # ═══════════════════════════════════════════════════════════
+        # TOP CONTROL BAR (Always visible, no scrolling needed)
+        # ═══════════════════════════════════════════════════════════
+        control_bar = QHBoxLayout()
         
-        # Vietnamese Guide
-        guide_label_vn = QLabel(
-            "<b>Hướng dẫn so sánh:</b> <b>Tiêu chí 1</b> quan trọng như thế nào so với <b>Tiêu chí 2</b>?<br>"
-            "• Chọn <b>2 đến 9</b> nếu Tiêu chí 1 quan trọng hơn.<br>"
-            "• Chọn <b>-2 đến -9</b> nếu Tiêu chí 2 quan trọng hơn.<br>"
-            "• Chọn <b>1</b> nếu hai tiêu chí quan trọng như nhau."
-        )
-        guide_label_vn.setStyleSheet("""
-            QLabel {
-                background-color: #e8f4f8;
-                color: #2c3e50;
-                padding: 8px;
-                border-radius: 4px;
-                border: 1px solid #b3e5fc;
-                font-size: 12px;
-            }
-        """)
-        guide_label_vn.setWordWrap(True)
-        guide_layout.addWidget(guide_label_vn)
-        
-        right_layout.addLayout(guide_layout)
-        
-        # Top bar: Expert Selection
-        top_bar = QHBoxLayout()
-        top_bar.addWidget(QLabel("Current Expert:"))
+        # Left side: Expert selector
+        control_bar.addWidget(QLabel("Current Expert:"))
         self.expert_combo = QComboBox()
         self.expert_combo.setView(QListView())
         self.expert_combo.setStyleSheet("""
@@ -211,55 +181,171 @@ class AHPTab(QWidget):
             }
         """)
         self.expert_combo.currentIndexChanged.connect(self.on_expert_changed)
-        top_bar.addWidget(self.expert_combo, 1)
-        right_layout.addLayout(top_bar)
+        control_bar.addWidget(self.expert_combo, 1)  # Stretch to fill space
         
-        # Pairwise Comparisons section
-        comp_group = QGroupBox("Pairwise Comparisons")
-        comp_layout = QVBoxLayout()
+        # Add stretch to push buttons to the right
+        control_bar.addStretch(1)
         
+        # Right side: Action buttons
+        save_btn = QPushButton("Save")
+        save_btn.setMinimumHeight(32)
+        save_btn.setMinimumWidth(100)
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+        """)
+        save_btn.setToolTip("Save Comparisons")
+        save_btn.clicked.connect(self.save_comparisons)
+        control_bar.addWidget(save_btn)
+        
+        calc_btn = QPushButton("Calculate")
+        calc_btn.setMinimumHeight(32)
+        calc_btn.setMinimumWidth(100)
+        calc_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        calc_btn.setToolTip("Calculate All Weights")
+        calc_btn.clicked.connect(self.calculate_weights)
+        control_bar.addWidget(calc_btn)
+        
+        comp_layout.addLayout(control_bar)
+        
+        # ═══════════════════════════════════════════════════════════
+        # Context Label
+        # ═══════════════════════════════════════════════════════════
         self.context_label = QLabel("Select a criterion from the tree to begin comparisons")
-        self.context_label.setStyleSheet("font-weight: bold; color: #333;")
+        self.context_label.setStyleSheet("font-weight: bold; color: #333; padding: 8px 0;")
         comp_layout.addWidget(self.context_label)
         
+        # ═══════════════════════════════════════════════════════════
+        # Compact Bilingual Instructions
+        # ═══════════════════════════════════════════════════════════
+        guide_layout = QHBoxLayout()
+        
+        # English Guide (more compact)
+        guide_label_en = QLabel(
+            "<b>How to Compare:</b> "
+            "2-9 if Criterion 1 more important | "
+            "-2 to -9 if Criterion 2 more important | "
+            "1 if equal"
+        )
+        guide_label_en.setStyleSheet("""
+            QLabel {
+                background-color: #e8f4f8;
+                color: #2c3e50;
+                padding: 6px;
+                border-radius: 4px;
+                border: 1px solid #b3e5fc;
+                font-size: 10px;
+            }
+        """)
+        guide_label_en.setWordWrap(True)
+        guide_layout.addWidget(guide_label_en)
+        
+        # Vietnamese Guide (more compact)
+        guide_label_vn = QLabel(
+            "<b>Hướng dẫn:</b> "
+            "2-9 nếu TC1 quan trọng hơn | "
+            "-2 đến -9 nếu TC2 quan trọng hơn | "
+            "1 nếu bằng nhau"
+        )
+        guide_label_vn.setStyleSheet("""
+            QLabel {
+                background-color: #e8f4f8;
+                color: #2c3e50;
+                padding: 6px;
+                border-radius: 4px;
+                border: 1px solid #b3e5fc;
+                font-size: 10px;
+            }
+        """)
+        guide_label_vn.setWordWrap(True)
+        guide_layout.addWidget(guide_label_vn)
+        
+        comp_layout.addLayout(guide_layout)
+        
+        # ═══════════════════════════════════════════════════════════
+        # Comparison Table (can scroll internally)
+        # ═══════════════════════════════════════════════════════════
         self.comparison_table = QTableWidget()
         self.comparison_table.itemClicked.connect(self.on_comparison_cell_clicked)
         
         # Disable auto-scroll behavior
         self.comparison_table.setAutoScroll(False)
+        
+        # Prevent collapse: set size policy and minimum height
+        from PyQt6.QtWidgets import QSizePolicy
+        self.comparison_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.comparison_table.setMinimumHeight(350)
+        
         comp_layout.addWidget(self.comparison_table)
         
-        # Action buttons
-        button_layout = QHBoxLayout()
-        
-        save_btn = QPushButton("Save Comparisons")
-        save_btn.clicked.connect(self.save_comparisons)
-        button_layout.addWidget(save_btn)
-        
-        calc_btn = QPushButton("Calculate All Weights")
-        calc_btn.clicked.connect(self.calculate_weights)
-        calc_btn.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;")
-        button_layout.addWidget(calc_btn)
-        
-        comp_layout.addLayout(button_layout)
-        
+        # ═══════════════════════════════════════════════════════════
         # Inconsistent Pairs Section
+        # ═══════════════════════════════════════════════════════════
+        comp_layout.addWidget(QLabel("Inconsistent Comparisons:"))
         self.inconsistency_text = QTextEdit()
         self.inconsistency_text.setReadOnly(True)
-        self.inconsistency_text.setMaximumHeight(50)  # Reduced from 80 to save space
+        self.inconsistency_text.setMaximumHeight(50)
         self.inconsistency_text.setPlaceholderText("Inconsistent comparison pairs will be displayed here after weight calculation...")
         self.inconsistency_text.setStyleSheet("background-color: #FFF3CD; border: 1px solid #FFC107; padding: 5px;")
-        comp_layout.addWidget(QLabel("Inconsistent Comparisons:"))
         comp_layout.addWidget(self.inconsistency_text)
         
         comp_group.setLayout(comp_layout)
-        right_layout.addWidget(comp_group, 1)
+        # CRITICAL: No stretch factor - let group grow naturally for tab-level scroll
+        right_layout.addWidget(comp_group)
         
-        # Assemble input tab layout
+        # ═══════════════════════════════════════════════════════════
+        # Wrap entire tab content in QScrollArea for tab-level scrolling
+        # ═══════════════════════════════════════════════════════════
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)  # Critical for dynamic sizing
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)  # Remove border
+        
+        # Create content widget that will go inside scroll area
+        content_widget = QWidget()
+        
+        # Assemble input tab layout (left + right panels)
         tab_layout = QHBoxLayout()
+        tab_layout.setContentsMargins(0, 0, 0, 0)
         tab_layout.addWidget(left_panel_widget)
+        # Horizontal stretch for width - right panel should fill remaining width
         tab_layout.addLayout(right_layout, stretch=1)
-        input_widget.setLayout(tab_layout)
+        
+        # Set layout on content widget
+        content_widget.setLayout(tab_layout)
+        
+        # Put content widget inside scroll area
+        scroll_area.setWidget(content_widget)
+        
+        # Set scroll area as the main widget of input tab
+        input_layout = QVBoxLayout()
+        input_layout.addWidget(scroll_area)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_widget.setLayout(input_layout)
         
         # Track current comparison context
         self.current_node = None
@@ -1574,6 +1660,9 @@ class AHPTab(QWidget):
                 
                 # Display results
                 self.display_hierarchical_weights(global_weights, consistency_info)
+                
+                # Auto-switch to Results tab after successful calculation
+                self.tab_widget.setCurrentIndex(1)  # Index 1 = Results tab
                 
                 QMessageBox.information(self, "Success", "Weights calculated and saved!")
                 

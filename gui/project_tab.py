@@ -121,6 +121,10 @@ class ProjectTab(QWidget):
         self.alternatives_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.alternatives_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
+        # Prevent collapse: set size policy and minimum height
+        self.alternatives_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.alternatives_table.setMinimumHeight(300)
+        
         alternatives_layout.addWidget(self.alternatives_table)
         
         alternatives_group.setLayout(alternatives_layout)

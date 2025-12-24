@@ -44,6 +44,11 @@ class CriteriaTreeWidget(QWidget):
         self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
+        # Prevent collapse: set size policy and minimum height
+        from PyQt6.QtWidgets import QSizePolicy
+        self.tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.tree.setMinimumHeight(280)
+        
         # Configure header resizing
         header = self.tree.header()
         from PyQt6.QtWidgets import QHeaderView
