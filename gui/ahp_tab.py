@@ -65,7 +65,11 @@ class AHPTab(QWidget):
         # Left panel: Criteria Tree Navigation
         left_panel = QVBoxLayout()
         left_panel_widget = QWidget()
-        left_panel_widget.setMaximumWidth(350)
+        
+        # Prevent left panel collapse: set minimum width and size policy
+        from PyQt6.QtWidgets import QSizePolicy
+        left_panel_widget.setMinimumWidth(300)
+        left_panel_widget.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         
         tree_label = QLabel("Criteria Hierarchy")
         tree_label.setStyleSheet("font-size: 14px; font-weight: bold;")
@@ -135,6 +139,11 @@ class AHPTab(QWidget):
         
         # Right panel: Comparison area
         right_layout = QVBoxLayout()
+        
+        # Create a widget for right panel to set size policy
+        right_panel_widget = QWidget()
+        right_panel_widget.setMinimumWidth(450)
+        right_panel_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         # Pairwise Comparisons section (with all controls at top)
         comp_group = QGroupBox("Pairwise Comparisons")
@@ -316,6 +325,9 @@ class AHPTab(QWidget):
         # CRITICAL: No stretch factor - let group grow naturally for tab-level scroll
         right_layout.addWidget(comp_group)
         
+        # Set the layout on right panel widget
+        right_panel_widget.setLayout(right_layout)
+        
         # ═══════════════════════════════════════════════════════════
         # Wrap entire tab content in QScrollArea for tab-level scrolling
         # ═══════════════════════════════════════════════════════════
@@ -331,9 +343,9 @@ class AHPTab(QWidget):
         # Assemble input tab layout (left + right panels)
         tab_layout = QHBoxLayout()
         tab_layout.setContentsMargins(0, 0, 0, 0)
-        tab_layout.addWidget(left_panel_widget)
-        # Horizontal stretch for width - right panel should fill remaining width
-        tab_layout.addLayout(right_layout, stretch=1)
+        # Add panels with stretch factors for proper space distribution (1:3 ratio)
+        tab_layout.addWidget(left_panel_widget, stretch=1)
+        tab_layout.addWidget(right_panel_widget, stretch=3)
         
         # Set layout on content widget
         content_widget.setLayout(tab_layout)

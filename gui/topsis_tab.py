@@ -272,7 +272,8 @@ class TOPSISTab(QWidget):
                     criterion['id'],
                     lower,
                     upper,
-                    expert_id
+                    expert_id,
+                    scenario_id=self.main_window.current_scenario_id  # Use current scenario
                 )
 
     def load_existing_ratings(self, database):
@@ -289,7 +290,11 @@ class TOPSISTab(QWidget):
             self.rating_table.blockSignals(False)
             return
             
-        ratings = database.get_topsis_ratings(self.main_window.get_project_id(), expert_id)
+        ratings = database.get_topsis_ratings(
+            self.main_window.get_project_id(),
+            expert_id,
+            scenario_id=self.main_window.current_scenario_id  # Load for current scenario
+        )
         
         # Create mapping for quick lookup
         rating_map = {}
@@ -358,7 +363,11 @@ class TOPSISTab(QWidget):
             with db as database:
                 # Collect matrices for each expert
                 for expert in self.experts:
-                    ratings = database.get_topsis_ratings(self.main_window.get_project_id(), expert['id'])
+                    ratings = database.get_topsis_ratings(
+                        self.main_window.get_project_id(),
+                        expert['id'],
+                        scenario_id=self.main_window.current_scenario_id  # Calculate for current scenario
+                    )
                     
                     # Build matrix for this expert
                     n_alternatives = len(self.alternatives)

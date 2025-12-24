@@ -583,6 +583,11 @@ class MainWindow(QMainWindow):
         
         self.current_scenario_id = new_scenario_id
         
+        # Clear TOPSIS results - they are scenario-specific but not stored in DB
+        # User must recalculate TOPSIS for each scenario
+        if hasattr(self, 'topsis_results'):
+            delattr(self, 'topsis_results')
+        
         # CHANGED: Refresh ALL tabs instead of just current tab
         # This ensures auto-load works regardless of which tab user is on
         if hasattr(self, 'project_tab'):

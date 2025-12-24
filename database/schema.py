@@ -124,7 +124,8 @@ class DatabaseSchema:
                 FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
                 FOREIGN KEY (alternative_id) REFERENCES alternatives(id) ON DELETE CASCADE,
                 FOREIGN KEY (criterion_id) REFERENCES criteria(id) ON DELETE CASCADE,
-                FOREIGN KEY (scenario_id) REFERENCES scenarios(id) ON DELETE CASCADE
+                FOREIGN KEY (scenario_id) REFERENCES scenarios(id) ON DELETE CASCADE,
+                UNIQUE(project_id, scenario_id, alternative_id, criterion_id, expert_id)
             )
         """)
         

@@ -96,7 +96,7 @@ class DatabaseManager:
                         FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
                         FOREIGN KEY (alternative_id) REFERENCES alternatives(id) ON DELETE CASCADE,
                         FOREIGN KEY (criterion_id) REFERENCES criteria(id) ON DELETE CASCADE,
-                        UNIQUE(project_id, alternative_id, criterion_id, expert_id)
+                        UNIQUE(project_id, scenario_id, alternative_id, criterion_id, expert_id)
                     )
                 """)
                 
@@ -269,6 +269,84 @@ class DatabaseManager:
                     
             except Exception as e:
                 print(f"[AHP Constraint Fix] Migration check skipped: {e}")
+                # Non-fatal - continue
+            
+            # ============================================================
+            # Migration 6: Fix UNIQUE Constraint for topsis_ratings (BUG FIX)
+            # ============================================================
+            # Same issue as AHP - UNIQUE constraint missing scenario_id
+            try:
+                cursor.execute("""
+                    SELECT sql FROM sqlite_master 
+                    WHERE type='table' AND name='topsis_ratings'
+                """)
+                table_sql = cursor.fetchone()
+                
+                if table_sql and 'UNIQUE(project_id, scenario_id, alternative_id, criterion_id, expert_id)' not in table_sql[0]:
+                    print("[TOPSIS Constraint Fix] Fixing UNIQUE constraint to include scenario_id...")
+                    
+                    cursor.execute("BEGIN TRANSACTION")
+                    
+                    # Backup existing data
+                    cursor.execute("""
+                        CREATE TABLE topsis_ratings_temp AS 
+                        SELECT * FROM topsis_ratings
+                    """)
+                    
+                    # Drop old table
+                    cursor.execute("DROP TABLE topsis_ratings")
+                    
+                    # Create new table with correct constraint
+                    cursor.execute("""
+                        CREATE TABLE topsis_ratings (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            project_id INTEGER NOT NULL,
+                            scenario_id INTEGER NOT NULL DEFAULT 1,
+                            expert_id INTEGER,
+                            alternative_id INTEGER NOT NULL,
+                            criterion_id INTEGER NOT NULL,
+                            rating_lower REAL NOT NULL,
+                            rating_upper REAL NOT NULL,
+                            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                            FOREIGN KEY (scenario_id) REFERENCES scenarios(id) ON DELETE CASCADE,
+                            FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
+                            FOREIGN KEY (alternative_id) REFERENCES alternatives(id) ON DELETE CASCADE,
+                            FOREIGN KEY (criterion_id) REFERENCES criteria(id) ON DELETE CASCADE,
+                            UNIQUE(project_id, scenario_id, alternative_id, criterion_id, expert_id)
+                        )
+                    """)
+                    
+                    # Restore data
+                    cursor.execute("""
+                        INSERT INTO topsis_ratings 
+                            (id, project_id, scenario_id, expert_id, alternative_id, 
+                             criterion_id, rating_lower, rating_upper)
+                        SELECT 
+                            id, project_id, 
+                            COALESCE(scenario_id, 1) as scenario_id,
+                            expert_id, alternative_id,
+                            criterion_id, rating_lower, rating_upper
+                        FROM topsis_ratings_temp
+                    """)
+                    
+                    # Drop temp table
+                    cursor.execute("DROP TABLE topsis_ratings_temp")
+                    
+                    # Recreate indexes
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_topsis_project 
+                        ON topsis_ratings(project_id)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_topsis_scenario 
+                        ON topsis_ratings(scenario_id)
+                    """)
+                    
+                    self.conn.commit()
+                    print("[TOPSIS Constraint Fix] ✓ Constraint fixed successfully!")
+                    
+            except Exception as e:
+                print(f"[TOPSIS Constraint Fix] Migration check skipped: {e}")
                 # Non-fatal - continue
                 
                 
