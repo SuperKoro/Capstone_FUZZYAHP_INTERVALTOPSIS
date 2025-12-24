@@ -105,7 +105,7 @@ class DatabaseSchema:
                 FOREIGN KEY (criterion1_id) REFERENCES criteria(id) ON DELETE CASCADE,
                 FOREIGN KEY (criterion2_id) REFERENCES criteria(id) ON DELETE CASCADE,
                 FOREIGN KEY (scenario_id) REFERENCES scenarios(id) ON DELETE CASCADE,
-                UNIQUE(project_id, expert_id, criterion1_id, criterion2_id, scenario_id)
+                UNIQUE(project_id, scenario_id, expert_id, criterion1_id, criterion2_id)
             )
         """)
         

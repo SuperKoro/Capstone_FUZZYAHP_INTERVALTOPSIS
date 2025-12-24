@@ -33,21 +33,29 @@ class CriteriaTreeWidget(QWidget):
     def init_ui(self):
         """Initialize the user interface"""
         layout = QVBoxLayout()
-        layout.setContentsMargins(5, 0, 5, 5)  # Top margin set to 0 to move tree up
-        layout.setSpacing(2)  # Minimal spacing
+        layout.setContentsMargins(5, 0, 5, 5)
+        layout.setSpacing(2)
         
         # Tree widget
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Criterion Name", "Type", "Actions"])
         
+        # PART 2: Disable internal scrollbar
+        self.tree.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
         # Configure header resizing
         header = self.tree.header()
         from PyQt6.QtWidgets import QHeaderView
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)  # Name stretches
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Type fits content
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Actions fits content
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         
-        layout.addWidget(self.tree, stretch=1)  # Allow tree to stretch and fill space
+        # PART 3: Connect signals for dynamic height update
+        self.tree.itemExpanded.connect(self.update_tree_height)
+        self.tree.itemCollapsed.connect(self.update_tree_height)
+        
+        layout.addWidget(self.tree, stretch=1)
         
         # Instructions (compact)
         instructions = QLabel(
@@ -100,21 +108,24 @@ class CriteriaTreeWidget(QWidget):
         button_layout.setContentsMargins(left_margin, 2, 2, 2)
         button_layout.setSpacing(5)
         
-        # Add button (+) - same size and color for all
+        # Add button (+) - adaptive sizing
+        from PyQt6.QtWidgets import QSizePolicy
         add_btn = QPushButton("Add")
-        add_btn.setFixedSize(55, 32)
+        add_btn.setMinimumSize(45, 28)  # Minimum size instead of fixed
+        add_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         add_btn.setProperty("class", "success")
         add_btn.setStyleSheet("font-size: 9pt; font-weight: bold;")
         add_btn.setToolTip("Add Sub-criterion")
         add_btn.clicked.connect(lambda: self.add_criterion(item))
         button_layout.addWidget(add_btn)
         
-        # Edit button (E) - Only for non-root items
+        # Edit button (✎) - Only for non-root items
         if show_delete:  # Root doesn't have delete, so we use this flag to identify non-root
-            edit_btn = QPushButton("✎") # Pencil character
-            edit_btn.setFixedSize(40, 30)
+            edit_btn = QPushButton("✎")  # Pencil character
+            edit_btn.setMinimumSize(32, 28)  # Minimum size
+            edit_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             edit_btn.setProperty("class", "warning")
-            edit_btn.setStyleSheet("font-size: 14pt; font-weight: bold;")
+            edit_btn.setStyleSheet("font-size: 13pt; font-weight: bold;")
             edit_btn.setToolTip("Edit Criterion")
             edit_btn.clicked.connect(lambda: self.edit_criterion(item))
             button_layout.addWidget(edit_btn)
@@ -122,9 +133,10 @@ class CriteriaTreeWidget(QWidget):
         # Delete button (-)
         if show_delete:
             del_btn = QPushButton("Delete")
-            del_btn.setFixedSize(70, 30)
+            del_btn.setMinimumSize(55, 28)  # Minimum size
+            del_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
             del_btn.setProperty("class", "danger")
-            del_btn.setStyleSheet("font-size: 10pt; font-weight: bold;")
+            del_btn.setStyleSheet("font-size: 9pt; font-weight: bold;")
             del_btn.setToolTip("Delete Criterion")
             del_btn.clicked.connect(lambda: self.delete_criterion(item))
             button_layout.addWidget(del_btn)
@@ -193,6 +205,9 @@ class CriteriaTreeWidget(QWidget):
                 
                 # Emit signal
                 self.criteria_changed.emit()
+                
+                # Update tree height
+                self.update_tree_height()
                 
                 QMessageBox.information(self, "Success", f"Criterion '{name}' added!")
                 
@@ -297,6 +312,9 @@ class CriteriaTreeWidget(QWidget):
                     # Emit signal
                     self.criteria_changed.emit()
                     
+                    # Update tree height
+                    self.update_tree_height()
+                    
                     QMessageBox.information(self, "Success", f"Criterion '{criterion_name}' deleted!")
                     
                 except Exception as e:
@@ -351,6 +369,40 @@ class CriteriaTreeWidget(QWidget):
             item.setExpanded(True)
         
         self.goal_item.setExpanded(True)
+        
+        # PART 3: Update tree height after loading
+        self.update_tree_height()
+    
+    def update_tree_height(self):
+        """PART 3: Recalculate tree height based on visible items"""
+        # Calculate total height needed
+        total_height = 0
+        
+        # Add header height
+        total_height += self.tree.header().height()
+        
+        # Helper function to count visible item heights recursively
+        def count_visible_height(item):
+            # Get this item's height
+            rect = self.tree.visualItemRect(item)
+            height = rect.height() if rect.isValid() else 30  # Default height if not visible yet
+            
+            # If expanded, add children heights
+            if item.isExpanded():
+                for i in range(item.childCount()):
+                    height += count_visible_height(item.child(i))
+            
+            return height
+        
+        # Count all top-level items and their children
+        for i in range(self.tree.topLevelItemCount()):
+            total_height += count_visible_height(self.tree.topLevelItem(i))
+        
+        # Add padding for instructions and borders
+        total_height += 60
+        
+        # Set minimum height (not maximum - allows growth)
+        self.tree.setMinimumHeight(total_height)
     
     def get_all_criteria(self):
         """Get all criteria with their hierarchy information"""

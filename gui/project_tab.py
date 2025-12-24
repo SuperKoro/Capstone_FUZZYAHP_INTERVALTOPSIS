@@ -5,7 +5,7 @@ Handles project configuration: criteria and alternatives management
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QLineEdit, QTextEdit,
-                             QMessageBox, QComboBox, QHeaderView, QSizePolicy)
+                             QMessageBox, QComboBox, QHeaderView, QSizePolicy, QScrollArea)
 from PyQt6.QtCore import Qt
 
 from utils.validators import Validators
@@ -21,7 +21,19 @@ class ProjectTab(QWidget):
     
     def init_ui(self):
         """Initialize the user interface"""
-        layout = QVBoxLayout()
+        # ============================================================
+        # PART 1: Create QScrollArea for tab-level scrolling
+        # ============================================================
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)  # CRITICAL: allows content to grow
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)  # Remove border
+        
+        # Create content widget that will go inside scroll area
+        content_widget = QWidget()
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
         
         # Project info section
         info_group = QGroupBox("Project Information")
@@ -45,13 +57,18 @@ class ProjectTab(QWidget):
         info_layout.addWidget(update_btn)
         
         info_group.setLayout(info_layout)
-        layout.addWidget(info_group)
+        content_layout.addWidget(info_group)
         
-        # Criteria section - using hierarchical tree
+        # ============================================================
+        # Horizontal layout for Criteria (LEFT) and Alternatives (RIGHT)
+        # ============================================================
+        columns_layout = QHBoxLayout()
+        columns_layout.setSpacing(10)
+        
+        # LEFT: Criteria section
         criteria_group = QGroupBox("Criteria Hierarchy")
         criteria_layout = QVBoxLayout()
-        criteria_layout.setContentsMargins(5, 5, 5, 5)  # Minimal margins
-        criteria_layout.setSpacing(2)  # Minimal spacing
+        criteria_layout.setContentsMargins(5, 5, 5, 5)
         
         from gui.criteria_tree import CriteriaTreeWidget
         self.criteria_tree = None  # Will be initialized in load_data
@@ -61,35 +78,68 @@ class ProjectTab(QWidget):
         self.criteria_placeholder.setLayout(criteria_layout_placeholder)
         criteria_layout.addWidget(self.criteria_placeholder)
         
-        # Remove minimum height to allow flexible sizing
-        
         criteria_group.setLayout(criteria_layout)
-        layout.addWidget(criteria_group, stretch=1)  # Allow criteria to stretch
+        columns_layout.addWidget(criteria_group, stretch=1)
         
-        # Alternatives section
+        # RIGHT: Alternatives section
         alternatives_group = QGroupBox("Alternatives (Suppliers) Management")
         alternatives_layout = QVBoxLayout()
         
+        # Add Alternative button at the TOP (before table)
+        alternatives_btn_layout = QHBoxLayout()
+        add_alternative_btn = QPushButton("+ Add Alternative")
+        add_alternative_btn.clicked.connect(self.add_alternative)
+        add_alternative_btn.setMinimumHeight(32)
+        add_alternative_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-weight: bold;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+        alternatives_btn_layout.addWidget(add_alternative_btn)
+        alternatives_btn_layout.addStretch()
+        alternatives_layout.addLayout(alternatives_btn_layout)
+        
+        # Table below the button
         self.alternatives_table = QTableWidget()
         self.alternatives_table.setColumnCount(4)
         self.alternatives_table.setHorizontalHeaderLabels(["ID", "Name", "Description", "Actions"])
         self.alternatives_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.alternatives_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.alternatives_table.setColumnWidth(0, 50)
-        self.alternatives_table.setColumnWidth(3, 220)  # Increased width for action buttons
+        self.alternatives_table.setColumnWidth(3, 220)
+        
+        # PART 2: Disable internal scrollbar on table
+        self.alternatives_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.alternatives_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
         alternatives_layout.addWidget(self.alternatives_table)
         
-        alternatives_btn_layout = QHBoxLayout()
-        add_alternative_btn = QPushButton("Add Alternative")
-        add_alternative_btn.clicked.connect(self.add_alternative)
-        alternatives_btn_layout.addWidget(add_alternative_btn)
-        alternatives_btn_layout.addStretch()
-        alternatives_layout.addLayout(alternatives_btn_layout)
-        
         alternatives_group.setLayout(alternatives_layout)
-        layout.addWidget(alternatives_group, stretch=1)  # Allow alternatives to stretch equally
+        columns_layout.addWidget(alternatives_group, stretch=1)
         
-        self.setLayout(layout)
+        # Add columns to content layout
+        content_layout.addLayout(columns_layout)
+        
+        # Set layout on content widget
+        content_widget.setLayout(content_layout)
+        
+        # Put content widget inside scroll area
+        scroll_area.setWidget(content_widget)
+        
+        # Set scroll area as the main widget of this tab
+        main_layout = QVBoxLayout()
+        main_layout.addWidget(scroll_area)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
     
     def load_data(self):
         """Load project data from database"""
@@ -156,21 +206,21 @@ class ProjectTab(QWidget):
             # Actions
             actions_widget = QWidget()
             actions_layout = QHBoxLayout()
-            actions_layout.setContentsMargins(4, 4, 4, 4)  # Increased margins
-            actions_layout.setSpacing(4)  # Add spacing between buttons
+            actions_layout.setContentsMargins(4, 4, 4, 4)
+            actions_layout.setSpacing(4)
             
             edit_btn = QPushButton("✎ Edit")
             edit_btn.setProperty("class", "warning")
-            edit_btn.setMinimumHeight(36)
-            edit_btn.setStyleSheet("border-radius: 0px; margin: 0px;")
+            edit_btn.setMinimumHeight(30)  # Reduced for better responsiveness
+            edit_btn.setStyleSheet("border-radius: 0px; margin: 0px; font-size: 9pt;")
             edit_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             edit_btn.clicked.connect(lambda checked, a_id=alternative['id']: self.edit_alternative(a_id))
             actions_layout.addWidget(edit_btn)
             
             delete_btn = QPushButton("− Delete")
             delete_btn.setProperty("class", "danger")
-            delete_btn.setMinimumHeight(36)
-            delete_btn.setStyleSheet("border-radius: 0px; margin: 0px;")
+            delete_btn.setMinimumHeight(30)  # Reduced for better responsiveness
+            delete_btn.setStyleSheet("border-radius: 0px; margin: 0px; font-size: 9pt;")
             delete_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             delete_btn.clicked.connect(lambda checked, a_id=alternative['id']: self.delete_alternative(a_id))
             actions_layout.addWidget(delete_btn)
@@ -178,8 +228,29 @@ class ProjectTab(QWidget):
             actions_widget.setLayout(actions_layout)
             self.alternatives_table.setCellWidget(row, 3, actions_widget)
             
-            # Set row height to accommodate taller buttons
-            self.alternatives_table.setRowHeight(row, 50)
+            # Set row height to accommodate buttons
+            self.alternatives_table.setRowHeight(row, 42)
+        
+        # PART 3: Update table height after populating
+        self.update_alternatives_height()
+    
+    def update_alternatives_height(self):
+        """PART 3: Recalculate table height based on content"""
+        # Calculate total height needed
+        total_height = 0
+        
+        # Add header height
+        total_height += self.alternatives_table.horizontalHeader().height()
+        
+        # Add all row heights
+        for row in range(self.alternatives_table.rowCount()):
+            total_height += self.alternatives_table.rowHeight(row)
+        
+        # Add some padding for borders and scrollbar space
+        total_height += 50
+        
+        # Set minimum height (allows growth, not fixed)
+        self.alternatives_table.setMinimumHeight(total_height)
     
     def update_project_info(self):
         """Update project information"""

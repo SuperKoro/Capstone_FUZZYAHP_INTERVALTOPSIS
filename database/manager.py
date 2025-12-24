@@ -189,6 +189,88 @@ class DatabaseManager:
                         f"Database migration failed. Please run 'python run_migration.py' "
                         f"to manually migrate your database file. Error: {migration_error}"
                     )
+            
+            # ============================================================
+            # Migration 5: Fix UNIQUE Constraint for ahp_comparisons (BUG FIX)
+            # ============================================================
+            # Check if ahp_comparisons has the wrong UNIQUE constraint order
+            # The bug: UNIQUE(project_id, expert_id, criterion1_id, criterion2_id, scenario_id)
+            # Should be: UNIQUE(project_id, scenario_id, expert_id, criterion1_id, criterion2_id)
+            try:
+                cursor.execute("""
+                    SELECT sql FROM sqlite_master 
+                    WHERE type='table' AND name='ahp_comparisons'
+                """)
+                table_sql = cursor.fetchone()
+                
+                if table_sql and 'UNIQUE(project_id, expert_id, criterion1_id, criterion2_id, scenario_id)' in table_sql[0]:
+                    print("[AHP Constraint Fix] Detected incorrect UNIQUE constraint order")
+                    print("[AHP Constraint Fix] Fixing constraint to properly isolate scenarios...")
+                    
+                    # Begin transaction
+                    cursor.execute("BEGIN TRANSACTION")
+                    
+                    # Backup existing data
+                    cursor.execute("""
+                        CREATE TABLE ahp_comparisons_temp AS 
+                        SELECT * FROM ahp_comparisons
+                    """)
+                    
+                    # Drop old table
+                    cursor.execute("DROP TABLE ahp_comparisons")
+                    
+                    # Create new table with correct constraint
+                    cursor.execute("""
+                        CREATE TABLE ahp_comparisons (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            project_id INTEGER NOT NULL,
+                            scenario_id INTEGER NOT NULL DEFAULT 1,
+                            expert_id INTEGER NOT NULL,
+                            criterion1_id INTEGER NOT NULL,
+                            criterion2_id INTEGER NOT NULL,
+                            fuzzy_l REAL NOT NULL,
+                            fuzzy_m REAL NOT NULL,
+                            fuzzy_u REAL NOT NULL,
+                            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                            FOREIGN KEY (scenario_id) REFERENCES scenarios(id) ON DELETE CASCADE,
+                            FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
+                            FOREIGN KEY (criterion1_id) REFERENCES criteria(id) ON DELETE CASCADE,
+                            FOREIGN KEY (criterion2_id) REFERENCES criteria(id) ON DELETE CASCADE,
+                            UNIQUE(project_id, scenario_id, expert_id, criterion1_id, criterion2_id)
+                        )
+                    """)
+                    
+                    # Restore data
+                    cursor.execute("""
+                        INSERT INTO ahp_comparisons 
+                            (id, project_id, scenario_id, expert_id, criterion1_id, 
+                             criterion2_id, fuzzy_l, fuzzy_m, fuzzy_u)
+                        SELECT 
+                            id, project_id, scenario_id, expert_id, criterion1_id,
+                            criterion2_id, fuzzy_l, fuzzy_m, fuzzy_u
+                        FROM ahp_comparisons_temp
+                    """)
+                    
+                    # Drop temp table
+                    cursor.execute("DROP TABLE ahp_comparisons_temp")
+                    
+                    # Recreate indexes
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_ahp_project 
+                        ON ahp_comparisons(project_id)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_ahp_scenario 
+                        ON ahp_comparisons(scenario_id)
+                    """)
+                    
+                    self.conn.commit()
+                    print("[AHP Constraint Fix] ✓ Constraint fixed successfully!")
+                    
+            except Exception as e:
+                print(f"[AHP Constraint Fix] Migration check skipped: {e}")
+                # Non-fatal - continue
+                
                 
         except Exception as e:
             print(f"Migration error (non-fatal): {e}")
