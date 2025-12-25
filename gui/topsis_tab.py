@@ -344,14 +344,21 @@ class TOPSISTab(QWidget):
              QMessageBox.warning(self, "Warning", "No experts defined!")
              return
         
+        
         # Check if weights are calculated
-        weights_calculated = all(c['weight'] > 0 for c in self.criteria)
+        # Weight can be None (not calculated) or a number (calculated)
+        # We need ALL criteria to have valid weights (not None and > 0)
+        weights_calculated = all(
+            c.get('weight') is not None and c['weight'] > 0 
+            for c in self.criteria
+        )
         if not weights_calculated:
             QMessageBox.warning(
                 self, "Warning",
                 "Please calculate AHP weights first in the AHP Evaluation tab!"
             )
             return
+        
         
         try:
             db = self.main_window.get_db_manager()
