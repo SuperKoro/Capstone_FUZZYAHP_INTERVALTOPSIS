@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTabl
                              QFileDialog, QRadioButton, QButtonGroup, QHeaderView, QLineEdit,
                              QTreeWidget, QTreeWidgetItem, QTextEdit, QTabWidget, QListView,
                              QScrollArea)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor
 import numpy as np
 import sqlite3
@@ -718,18 +718,24 @@ class AHPTab(QWidget):
         
         command = RenameExpertCommand(db, expert_id, new_name)
         if undo_manager.execute(command):
-            # Update local data and combo box
-            self.load_data()
-            # Refresh TOPSIS tab to update expert name there too
-            if hasattr(self.main_window, 'topsis_tab'):
-                self.main_window.topsis_tab.load_data()
-            QMessageBox.information(self, "Success", f"Expert renamed to '{new_name}'")
+            # Defer the reload to prevent crash
+            # We need to wait for the current event handler to finish before rebuilding the table
+            QTimer.singleShot(0, lambda: self._reload_after_rename(new_name))
         else:
             # Revert UI if failed
             self.expert_table.blockSignals(True)
             item.setText(old_name)
             self.expert_table.blockSignals(False)
             QMessageBox.critical(self, "Error", "Failed to rename expert.")
+    
+    def _reload_after_rename(self, new_name):
+        """Reload data and show success message after rename"""
+        # Update local data and combo box
+        self.load_data()
+        # Refresh TOPSIS tab to update expert name there too
+        if hasattr(self.main_window, 'topsis_tab'):
+            self.main_window.topsis_tab.load_data()
+        QMessageBox.information(self, "Success", f"Expert renamed to '{new_name}'")
     
     def on_expert_weight_changed(self, item):
         """Handle weight cell changes with auto-distribution"""
@@ -760,11 +766,13 @@ class AHPTab(QWidget):
                 # Revert UI if failed
                 self.update_weight_display()
                 QMessageBox.critical(self, "Error", "Failed to update weight.")
-                self.load_data()
+                # Defer reload to prevent crash
+                QTimer.singleShot(0, self.load_data)
             
         except ValueError as e:
             QMessageBox.warning(self, "Invalid Weight", str(e))
-            self.load_data()  # Revert
+            # Defer reload to prevent crash
+            QTimer.singleShot(0, self.load_data)
     
     def update_weight_display(self):
         """Update weight display with auto-calculated values and explanation"""
