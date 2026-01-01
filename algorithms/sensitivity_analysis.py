@@ -400,9 +400,9 @@ def test_perturbation_analysis():
     
     # Create sample data
     decision_matrix = np.array([
-        [[7, 9], [5, 7], [3, 5]],  # Supplier A
-        [[5, 7], [7, 9], [5, 7]],  # Supplier B
-        [[3, 5], [5, 7], [7, 9]],  # Supplier C
+        [[7, 9], [6, 9], [4, 5]],  # Supplier A
+        [[6, 9], [7, 9], [6, 9]],  # Supplier B
+        [[4, 5], [6, 9], [9, 10]],  # Supplier C
     ])
     
     weights = np.array([0.5, 0.3, 0.2])  # Price, Quality, Delivery

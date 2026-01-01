@@ -37,7 +37,7 @@ class TOPSISTab(QWidget):
         # Instructions
         info_label = QLabel(
             "Enter performance ratings for each alternative against each criterion.\n"
-            "Use linguistic ratings: Very Poor, Poor, Fair, Good, Very Good, Excellent"
+            "Use linguistic ratings: Very Poor, Poor, Medium Poor, Fair, Medium Good, Good, Very Good"
         )
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
@@ -183,11 +183,12 @@ class TOPSISTab(QWidget):
         n_alternatives = len(self.alternatives)
         n_criteria = len(self.criteria)
         
-        self.rating_table.setRowCount(n_alternatives)
-        self.rating_table.setColumnCount(n_criteria + 1)
+        # TRANSPOSED: Criteria in rows, Alternatives in columns
+        self.rating_table.setRowCount(n_criteria)
+        self.rating_table.setColumnCount(n_alternatives + 1)
         
         # Set headers
-        headers = ["Alternative"] + [c['name'] for c in self.criteria]
+        headers = ["Criterion"] + [a['name'] for a in self.alternatives]
         self.rating_table.setHorizontalHeaderLabels(headers)
         
         # Configure header resizing
@@ -203,11 +204,11 @@ class TOPSISTab(QWidget):
         # Make rows taller for better visibility
         self.rating_table.verticalHeader().setDefaultSectionSize(50)
         
-        # Populate rows
-        for i, alternative in enumerate(self.alternatives):
-            self.rating_table.setItem(i, 0, QTableWidgetItem(alternative['name']))
+        # Populate rows (TRANSPOSED)
+        for i, criterion in enumerate(self.criteria):
+            self.rating_table.setItem(i, 0, QTableWidgetItem(criterion['name']))
             
-            for j, criterion in enumerate(self.criteria):
+            for j, alternative in enumerate(self.alternatives):
                 rating_combo = NoScrollComboBox()
                 rating_combo.setEditable(False)
                 rating_combo.setView(QListView())
@@ -243,23 +244,23 @@ class TOPSISTab(QWidget):
                     }
                 """)
                 rating_combo.addItems([
-                    "Very Poor", "Poor", "Fair", "Good", "Very Good", "Excellent"
+                    "Very Poor", "Poor", "Medium Poor", "Fair", "Medium Good", "Good", "Very Good"
                 ])
-                rating_combo.setCurrentIndex(2)  # Default to "Fair"
-                # Connect signal to save immediately
-                rating_combo.currentIndexChanged.connect(lambda index, r=i, c=j: self.save_single_rating(r, c))
+                rating_combo.setCurrentIndex(3)  # Default to "Fair"
+                # Connect signal to save immediately (TRANSPOSED: i=criterion, j=alternative)
+                rating_combo.currentIndexChanged.connect(lambda index, c=i, a=j: self.save_single_rating(c, a))
                 self.rating_table.setCellWidget(i, j + 1, rating_combo)
     
-    def save_single_rating(self, row, col):
-        """Save a single rating change immediately"""
+    def save_single_rating(self, criterion_idx, alternative_idx):
+        """Save a single rating change immediately (TRANSPOSED)"""
         expert_id = self.expert_combo.currentData()
         if expert_id is None:
             return
 
-        alternative = self.alternatives[row]
-        criterion = self.criteria[col]
+        criterion = self.criteria[criterion_idx]
+        alternative = self.alternatives[alternative_idx]
         
-        combo = self.rating_table.cellWidget(row, col + 1)
+        combo = self.rating_table.cellWidget(criterion_idx, alternative_idx + 1)
         rating_name = combo.currentText()
         lower, upper = IntervalTOPSIS.get_interval_rating(rating_name)
         
@@ -282,11 +283,11 @@ class TOPSISTab(QWidget):
         if expert_id is None:
             # No expert selected - clear all ratings to default
             self.rating_table.blockSignals(True)
-            for i in range(self.rating_table.rowCount()):
-                for j in range(self.rating_table.columnCount() - 1):
+            for i in range(self.rating_table.rowCount()):  # Criteria
+                for j in range(self.rating_table.columnCount() - 1):  # Alternatives
                     combo = self.rating_table.cellWidget(i, j + 1)
                     if combo:
-                        combo.setCurrentIndex(2)  # Default to Fair
+                        combo.setCurrentIndex(3)  # Default to Fair
             self.rating_table.blockSignals(False)
             return
             
@@ -302,10 +303,10 @@ class TOPSISTab(QWidget):
             key = (rating['alternative_id'], rating['criterion_id'])
             rating_map[key] = (rating['rating_lower'], rating['rating_upper'])
         
-        # Apply to table
+        # Apply to table (TRANSPOSED)
         self.rating_table.blockSignals(True) # Prevent auto-save triggering
-        for i, alternative in enumerate(self.alternatives):
-            for j, criterion in enumerate(self.criteria):
+        for i, criterion in enumerate(self.criteria):
+            for j, alternative in enumerate(self.alternatives):
                 key = (alternative['id'], criterion['id'])
                 combo = self.rating_table.cellWidget(i, j + 1)
                 
@@ -320,7 +321,7 @@ class TOPSISTab(QWidget):
                         combo.setCurrentIndex(index)
                 else:
                     # Default to Fair if no rating
-                    combo.setCurrentIndex(2)
+                    combo.setCurrentIndex(3)
         self.rating_table.blockSignals(False)
     
     def interval_to_linguistic(self, lower, upper):
@@ -389,8 +390,8 @@ class TOPSISTab(QWidget):
                             if (alt['id'], crit['id']) in rating_map:
                                 matrix[i, j] = rating_map[(alt['id'], crit['id'])]
                             else:
-                                # Default to Fair [3, 5] if missing
-                                matrix[i, j] = [3, 5]
+                                # Default to Fair [4, 5] if missing
+                                matrix[i, j] = [4, 5]
                     
                     expert_matrices.append(matrix)
             

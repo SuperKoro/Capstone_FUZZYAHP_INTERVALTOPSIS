@@ -527,8 +527,8 @@ class SensitivityAnalysisTab(QWidget):
                             if (alt['id'], crit['id']) in rating_map:
                                 matrix[i, j] = rating_map[(alt['id'], crit['id'])]
                             else:
-                                # Default to Fair [3, 5] if missing
-                                matrix[i, j] = [3, 5]
+                                # Default to Fair [4, 5] if missing
+                                matrix[i, j] = [4, 5]
                     
                     expert_matrices.append(matrix)
             

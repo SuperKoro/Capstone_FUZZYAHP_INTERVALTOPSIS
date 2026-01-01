@@ -214,10 +214,11 @@ class MethodologyDialog(QDialog):
                 </tr>
                 <tr><td>Very Poor (Rất kém)</td><td>[0, 1]</td></tr>
                 <tr><td>Poor (Kém)</td><td>[1, 3]</td></tr>
-                <tr><td>Fair (Trung bình)</td><td>[3, 5]</td></tr>
-                <tr><td>Good (Tốt)</td><td>[5, 7]</td></tr>
-                <tr><td>Very Good (Rất tốt)</td><td>[7, 9]</td></tr>
-                <tr><td>Excellent (Xuất sắc)</td><td>[9, 10]</td></tr>
+                <tr><td>Medium Poor (Hơi kém)</td><td>[3, 4]</td></tr>
+                <tr><td>Fair (Trung bình)</td><td>[4, 5]</td></tr>
+                <tr><td>Medium Good (Khá)</td><td>[5, 6]</td></tr>
+                <tr><td>Good (Tốt)</td><td>[6, 9]</td></tr>
+                <tr><td>Very Good (Rất tốt)</td><td>[9, 10]</td></tr>
             </table>
             
             <h3>3. Các bước tính toán</h3>

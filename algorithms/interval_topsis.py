@@ -14,10 +14,11 @@ class IntervalTOPSIS:
     LINGUISTIC_RATINGS = {
         "Very Poor": (0, 1),
         "Poor": (1, 3),
-        "Fair": (3, 5),
-        "Good": (5, 7),
-        "Very Good": (7, 9),
-        "Excellent": (9, 10)
+        "Medium Poor": (3, 4),
+        "Fair": (4, 5),
+        "Medium Good": (5, 6),
+        "Good": (6, 9),
+        "Very Good": (9, 10)
     }
     @staticmethod
     def aggregate_expert_ratings(expert_matrices: List[np.ndarray]) -> np.ndarray:

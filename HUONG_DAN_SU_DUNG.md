@@ -44,7 +44,7 @@
 - **Kiểm tra tính nhất quán**: Tính toán tự động chỉ số CR với màu sắc phản hồi
 
 ### 📊 Module Interval TOPSIS
-- **Thang đánh giá ngôn ngữ**: 6 mức độ từ "Rất Kém" đến "Xuất Sắc"
+- **Thang đánh giá ngôn ngữ**: 7 mức độ từ "Very Poor" đến "Very Good"
 - **Tính toán khoảng**: Sử dụng số học khoảng để xử lý độ không chắc chắn
 - **Xếp hạng tự động**: Tính toán hệ số gần gũi và xếp hạng cuối cùng
 
@@ -184,18 +184,17 @@ python main.py
 
 > 📊 **Giải thích CR**: Chỉ số CR đo lường tính nhất quán trong đánh giá của bạn. Nếu CR cao, có thể bạn đã mâu thuẫn trong so sánh (ví dụ: A quan trọng hơn B, B quan trọng hơn C, nhưng C lại quan trọng hơn A).
 
-### 🎯 Bước 4: Đánh Giá TOPSIS (Xếp Hạng)
-
 1. Chuyển đến tab **"TOPSIS Rating"**
 2. Bạn sẽ thấy ma trận: Hàng là nhà cung cấp, cột là tiêu chí
 3. Với mỗi ô, chọn mức độ đánh giá từ dropdown:
-   - **Excellent** (Xuất sắc): 9-10/10
-   - **Very Good** (Rất tốt): 7-9/10
-   - **Good** (Tốt): 5-7/10
-   - **Fair** (Trung bình): 3-5/10
+   - **Very Good** (Rất tốt): 9-10/10
+   - **Good** (Tốt): 6-9/10
+   - **Medium Good** (Khá): 5-6/10
+   - **Fair** (Trung bình): 4-5/10
+   - **Medium Poor** (Hơi kém): 3-4/10
    - **Poor** (Kém): 1-3/10
    - **Very Poor** (Rất kém): 0-1/10
-4. Sau khi điền đủ, nhấn **"Calculate TOPSIS Ranking"**
+4. Sau khi điền đủ, nhấn **"Calculate TOPSIS Ranking"****
 
 > 💡 **Mẹo**: Đánh giá nên dựa trên dữ liệu thực tế (hiệu suất quá khứ, báo cáo kiểm định, đánh giá khách hàng, v.v.)
 
@@ -263,13 +262,14 @@ TOPSIS xếp hạng các phương án dựa trên nguyên tắc: Phương án t�
 
 #### Thang Đánh Giá Linguistic
 | Mức Độ | Khoảng Mờ | Ý Nghĩa |
-|--------|-----------|---------|
-| **Excellent** | [0.9, 1.0] | Xuất sắc, vượt trội |
-| **Very Good** | [0.7, 0.9] | Rất tốt, trên mức trung bình cao |
-| **Good** | [0.5, 0.7] | Tốt, đạt yêu cầu |
-| **Fair** | [0.3, 0.5] | Trung bình, chấp nhận được |
-| **Poor** | [0.1, 0.3] | Kém, dưới mức mong đợi |
-| **Very Poor** | [0.0, 0.1] | Rất kém, không chấp nhận được |
+|--------|-----------|---------|  
+| **Very Good** | [9, 10] | Rất tốt, xuất sắc |
+| **Good** | [6, 9] | Tốt, đạt yêu cầu |
+| **Medium Good** | [5, 6] | Khá, trên mức trung bình |
+| **Fair** | [4, 5] | Trung bình, chấp nhận được |
+| **Medium Poor** | [3, 4] | Hơi kém, dưới trung bình |
+| **Poor** | [1, 3] | Kém, dưới mức mong đợi |
+| **Very Poor** | [0, 1] | Rất kém, không chấp nhận được |
 
 ---
 
@@ -528,10 +528,10 @@ Nếu bạn gặp lỗi hoặc có góp ý cải thiện, vui lòng ghi lại:
 #### Bước 5: Đánh Giá TOPSIS
 | NCC | Giá | Chất lượng | Thời gian | Dịch vụ | Uy tín |
 |-----|-----|------------|-----------|---------|--------|
-| A | Fair | Very Good | Good | Good | Excellent |
-| B | Excellent | Good | Fair | Fair | Good |
-| C | Good | Excellent | Good | Very Good | Very Good |
-| D | Fair | Good | Excellent | Excellent | Fair |
+| A | Fair | Very Good | Good | Good | Very Good |
+| B | Very Good | Good | Fair | Fair | Good |
+| C | Good | Very Good | Good | Medium Good | Very Good |
+| D | Fair | Good | Medium Good | Very Good | Fair |
 
 #### Bước 6: Kết Quả Xếp Hạng
 1. 🥇 **NCC C** - CC: 0.78 (Cân bằng tốt, vượt trội về chất lượng)
