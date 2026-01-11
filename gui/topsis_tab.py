@@ -1,15 +1,20 @@
 """
 TOPSIS Tab Module
 Handles Interval TOPSIS rating input and calculation
+With frozen Criterion column (Excel-like freeze panes)
 """
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QTableWidget,
                              QTableWidgetItem, QPushButton, QLabel, QComboBox, QMessageBox,
-                             QHeaderView, QListView)
+                             QHeaderView, QListView, QAbstractItemView)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QBrush
 import numpy as np
 
 from algorithms.interval_topsis import IntervalTOPSIS
+
+
+FROZEN_BG_COLOR = QColor(240, 244, 248)
 
 
 class NoScrollComboBox(QComboBox):
@@ -21,7 +26,7 @@ class NoScrollComboBox(QComboBox):
 
 
 class TOPSISTab(QWidget):
-    """Interval TOPSIS rating tab"""
+    """Interval TOPSIS rating tab with frozen Criterion column"""
     
     def __init__(self, main_window):
         super().__init__()
@@ -87,13 +92,74 @@ class TOPSISTab(QWidget):
         expert_group.setLayout(expert_layout)
         layout.addWidget(expert_group)
         
-        # Rating matrix section
+        # Rating matrix section with frozen column
         matrix_group = QGroupBox("Performance Rating Matrix")
-        matrix_layout = QVBoxLayout()
+        matrix_layout = QHBoxLayout()
+        matrix_layout.setSpacing(0)
+        matrix_layout.setContentsMargins(5, 5, 5, 5)
         
+        # FROZEN TABLE (Criterion column only)
+        self.frozen_table = QTableWidget()
+        self.frozen_table.setColumnCount(1)
+        self.frozen_table.setHorizontalHeaderLabels(["Criterion"])
+        self.frozen_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.frozen_table.setColumnWidth(0, 200)
+        self.frozen_table.setFixedWidth(220)
+        self.frozen_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.frozen_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.frozen_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.frozen_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.frozen_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #f0f4f8;
+                border: 1px solid #3498db;
+                border-right: 2px solid #3498db;
+            }
+            QHeaderView::section {
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+                padding: 8px;
+                border: none;
+            }
+            QTableWidget::item {
+                padding: 5px;
+                border-bottom: 1px solid #ddd;
+            }
+        """)
+        
+        # SCROLLABLE TABLE (Supplier columns)
         self.rating_table = QTableWidget()
         self.rating_table.cellClicked.connect(self.on_rating_cell_clicked)
-        matrix_layout.addWidget(self.rating_table)
+        self.rating_table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.rating_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.rating_table.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #3498db;
+                border-left: none;
+            }
+            QHeaderView::section {
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+                padding: 8px;
+                border: none;
+            }
+        """)
+        
+        # Synchronize vertical scrolling between tables
+        self.rating_table.verticalScrollBar().valueChanged.connect(
+            self.frozen_table.verticalScrollBar().setValue
+        )
+        self.frozen_table.verticalScrollBar().valueChanged.connect(
+            self.rating_table.verticalScrollBar().setValue
+        )
+        
+        # Hide row headers on scrollable table (show only on frozen)
+        self.rating_table.verticalHeader().setVisible(False)
+        
+        matrix_layout.addWidget(self.frozen_table)
+        matrix_layout.addWidget(self.rating_table, 1)
         
         matrix_group.setLayout(matrix_layout)
         layout.addWidget(matrix_group)
@@ -104,6 +170,44 @@ class TOPSISTab(QWidget):
         layout.addWidget(calc_btn)
         
         self.setLayout(layout)
+
+    def _get_combo_style(self):
+        """Return the default combobox style"""
+        return """
+            QComboBox {
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 13px;
+                padding: 5px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 20px;
+            }
+            QComboBox QListView {
+                border: 1px solid #ccc;
+                background-color: white;
+                outline: none;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 13px;
+            }
+            QComboBox QListView::item {
+                border-bottom: 1px solid #e0e0e0;
+                padding: 8px;
+                min-height: 30px;
+                color: black;
+            }
+            QComboBox QListView::item:hover {
+                background-color: #00CED1;
+                color: white;
+            }
+            QComboBox QListView::item:selected {
+                background-color: #00CED1;
+                color: white;
+            }
+        """
     
     def load_data(self):
         """Load data from database"""
@@ -113,8 +217,6 @@ class TOPSISTab(QWidget):
         
         with db as database:
             # Load criteria - ONLY LEAF CRITERIA (no parents)
-            # Parent criteria should not be rated in TOPSIS to avoid double counting
-            # Their weights are already incorporated through hierarchical AHP
             self.criteria = database.get_leaf_criteria(self.main_window.get_project_id())
             
             # Load alternatives
@@ -129,24 +231,20 @@ class TOPSISTab(QWidget):
             self.expert_combo.clear()
             
             if self.experts:
-                # Add experts to combo
                 for expert in self.experts:
                     self.expert_combo.addItem(expert['name'], expert['id'])
                 
-                # Restore selection if possible, otherwise select first
                 if current_expert_id:
                     index = self.expert_combo.findData(current_expert_id)
                     if index >= 0:
                         self.expert_combo.setCurrentIndex(index)
                     else:
-                        self.expert_combo.setCurrentIndex(0)  # Select first if previous not found
+                        self.expert_combo.setCurrentIndex(0)
                 else:
-                    self.expert_combo.setCurrentIndex(0)  # Select first expert by default
+                    self.expert_combo.setCurrentIndex(0)
                 
-                # Ensure combo is enabled
                 self.expert_combo.setEnabled(True)
             else:
-                # No experts available
                 self.expert_combo.addItem("(No experts - add in AHP tab)", None)
                 self.expert_combo.setEnabled(False)
             
@@ -167,15 +265,14 @@ class TOPSISTab(QWidget):
 
     def on_rating_cell_clicked(self, row, col):
         """Handle click on rating cell - open dropdown"""
-        # Columns start from 1 (0 is Alternative name)
-        if col > 0:
-            combo = self.rating_table.cellWidget(row, col)
-            if combo:
-                combo.showPopup()
+        combo = self.rating_table.cellWidget(row, col)
+        if combo:
+            combo.showPopup()
 
     def setup_rating_table(self):
-        """Setup the rating matrix table"""
+        """Setup the rating matrix table with frozen Criterion column"""
         if not self.criteria or not self.alternatives:
+            self.frozen_table.setRowCount(0)
             self.rating_table.setRowCount(0)
             self.rating_table.setColumnCount(0)
             return
@@ -183,76 +280,53 @@ class TOPSISTab(QWidget):
         n_alternatives = len(self.alternatives)
         n_criteria = len(self.criteria)
         
-        # TRANSPOSED: Criteria in rows, Alternatives in columns
-        self.rating_table.setRowCount(n_criteria)
-        self.rating_table.setColumnCount(n_alternatives + 1)
+        # Setup FROZEN table (Criterion names only)
+        self.frozen_table.setRowCount(n_criteria)
+        self.frozen_table.verticalHeader().setDefaultSectionSize(50)
         
-        # Set headers
-        headers = ["Criterion"] + [a['name'] for a in self.alternatives]
+        for i, criterion in enumerate(self.criteria):
+            item = QTableWidgetItem(criterion['name'])
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            item.setBackground(QBrush(FROZEN_BG_COLOR))
+            self.frozen_table.setItem(i, 0, item)
+        
+        # Setup SCROLLABLE table (Supplier ratings)
+        self.rating_table.setRowCount(n_criteria)
+        self.rating_table.setColumnCount(n_alternatives)
+        
+        # Set headers (Supplier names)
+        headers = [a['name'] for a in self.alternatives]
         self.rating_table.setHorizontalHeaderLabels(headers)
         
         # Configure header resizing
         header = self.rating_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.rating_table.setColumnWidth(0, 150)
-        
-        for i in range(1, n_criteria + 1):
-            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-            
         header.setMinimumSectionSize(130)
+        for i in range(n_alternatives):
+            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         
         # Make rows taller for better visibility
         self.rating_table.verticalHeader().setDefaultSectionSize(50)
         
-        # Populate rows (TRANSPOSED)
+        # Populate rating combos
         for i, criterion in enumerate(self.criteria):
-            self.rating_table.setItem(i, 0, QTableWidgetItem(criterion['name']))
-            
             for j, alternative in enumerate(self.alternatives):
                 rating_combo = NoScrollComboBox()
                 rating_combo.setEditable(False)
                 rating_combo.setView(QListView())
-                rating_combo.setStyleSheet("""
-                    QComboBox {
-                        font-size: 12px;
-                        padding: 5px;
-                        border: 1px solid #ccc;
-                        border-radius: 4px;
-                    }
-                    QComboBox::drop-down {
-                        border: none;
-                        width: 20px;
-                    }
-                    QComboBox QListView {
-                        border: 1px solid #ccc;
-                        background-color: white;
-                        outline: none;
-                    }
-                    QComboBox QListView::item {
-                        border-bottom: 1px solid #e0e0e0;
-                        padding: 8px;
-                        min-height: 25px;
-                        color: black;
-                    }
-                    QComboBox QListView::item:hover {
-                        background-color: #00CED1;
-                        color: white;
-                    }
-                    QComboBox QListView::item:selected {
-                        background-color: #00CED1;
-                        color: white;
-                    }
-                """)
-                rating_combo.addItems([
-                    "Very Poor", "Poor", "Medium Poor", "Fair", "Medium Good", "Good", "Very Good"
-                ])
+                rating_combo.setStyleSheet(self._get_combo_style())
+                # Add items with interval notation
+                for rating_name in ["Very Poor", "Poor", "Medium Poor", "Fair", "Medium Good", "Good", "Very Good"]:
+                    lower, upper = IntervalTOPSIS.LINGUISTIC_RATINGS[rating_name]
+                    interval_str = f"({int(lower):2}, {int(upper):2})"
+                    label = f"{rating_name:13} {interval_str:8}"
+                    rating_combo.addItem(label)
                 rating_combo.setCurrentIndex(3)  # Default to "Fair"
-                # Connect signal to save immediately (TRANSPOSED: i=criterion, j=alternative)
+                # Connect signal to save immediately
                 rating_combo.currentIndexChanged.connect(lambda index, c=i, a=j: self.save_single_rating(c, a))
-                self.rating_table.setCellWidget(i, j + 1, rating_combo)
+                self.rating_table.setCellWidget(i, j, rating_combo)
     
     def save_single_rating(self, criterion_idx, alternative_idx):
-        """Save a single rating change immediately (TRANSPOSED)"""
+        """Save a single rating change immediately"""
         expert_id = self.expert_combo.currentData()
         if expert_id is None:
             return
@@ -260,8 +334,9 @@ class TOPSISTab(QWidget):
         criterion = self.criteria[criterion_idx]
         alternative = self.alternatives[alternative_idx]
         
-        combo = self.rating_table.cellWidget(criterion_idx, alternative_idx + 1)
-        rating_name = combo.currentText()
+        combo = self.rating_table.cellWidget(criterion_idx, alternative_idx)
+        rating_text = combo.currentText()
+        rating_name = rating_text.split('(')[0].strip()
         lower, upper = IntervalTOPSIS.get_interval_rating(rating_name)
         
         db = self.main_window.get_db_manager()
@@ -274,18 +349,17 @@ class TOPSISTab(QWidget):
                     lower,
                     upper,
                     expert_id,
-                    scenario_id=self.main_window.current_scenario_id  # Use current scenario
+                    scenario_id=self.main_window.current_scenario_id
                 )
 
     def load_existing_ratings(self, database):
         """Load existing ratings from database for selected expert"""
         expert_id = self.expert_combo.currentData()
         if expert_id is None:
-            # No expert selected - clear all ratings to default
             self.rating_table.blockSignals(True)
-            for i in range(self.rating_table.rowCount()):  # Criteria
-                for j in range(self.rating_table.columnCount() - 1):  # Alternatives
-                    combo = self.rating_table.cellWidget(i, j + 1)
+            for i in range(self.rating_table.rowCount()):
+                for j in range(self.rating_table.columnCount()):
+                    combo = self.rating_table.cellWidget(i, j)
                     if combo:
                         combo.setCurrentIndex(3)  # Default to Fair
             self.rating_table.blockSignals(False)
@@ -294,7 +368,7 @@ class TOPSISTab(QWidget):
         ratings = database.get_topsis_ratings(
             self.main_window.get_project_id(),
             expert_id,
-            scenario_id=self.main_window.current_scenario_id  # Load for current scenario
+            scenario_id=self.main_window.current_scenario_id
         )
         
         # Create mapping for quick lookup
@@ -303,24 +377,27 @@ class TOPSISTab(QWidget):
             key = (rating['alternative_id'], rating['criterion_id'])
             rating_map[key] = (rating['rating_lower'], rating['rating_upper'])
         
-        # Apply to table (TRANSPOSED)
-        self.rating_table.blockSignals(True) # Prevent auto-save triggering
+        # Apply to table
+        self.rating_table.blockSignals(True)
         for i, criterion in enumerate(self.criteria):
             for j, alternative in enumerate(self.alternatives):
                 key = (alternative['id'], criterion['id'])
-                combo = self.rating_table.cellWidget(i, j + 1)
+                combo = self.rating_table.cellWidget(i, j)
                 
-                if not combo:  # Safety check
+                if not combo:
                     continue
                 
                 if key in rating_map:
                     lower, upper = rating_map[key]
                     rating_name = self.interval_to_linguistic(lower, upper)
-                    index = combo.findText(rating_name)
+                    index = -1
+                    for idx in range(combo.count()):
+                        if combo.itemText(idx).startswith(rating_name):
+                            index = idx
+                            break
                     if index >= 0:
                         combo.setCurrentIndex(index)
                 else:
-                    # Default to Fair if no rating
                     combo.setCurrentIndex(3)
         self.rating_table.blockSignals(False)
     
@@ -345,10 +422,7 @@ class TOPSISTab(QWidget):
              QMessageBox.warning(self, "Warning", "No experts defined!")
              return
         
-        
         # Check if weights are calculated
-        # Weight can be None (not calculated) or a number (calculated)
-        # We need ALL criteria to have valid weights (not None and > 0)
         weights_calculated = all(
             c.get('weight') is not None and c['weight'] > 0 
             for c in self.criteria
@@ -360,7 +434,6 @@ class TOPSISTab(QWidget):
             )
             return
         
-        
         try:
             db = self.main_window.get_db_manager()
             if not db:
@@ -369,20 +442,17 @@ class TOPSISTab(QWidget):
             expert_matrices = []
             
             with db as database:
-                # Collect matrices for each expert
                 for expert in self.experts:
                     ratings = database.get_topsis_ratings(
                         self.main_window.get_project_id(),
                         expert['id'],
-                        scenario_id=self.main_window.current_scenario_id  # Calculate for current scenario
+                        scenario_id=self.main_window.current_scenario_id
                     )
                     
-                    # Build matrix for this expert
                     n_alternatives = len(self.alternatives)
                     n_criteria = len(self.criteria)
                     matrix = np.zeros((n_alternatives, n_criteria, 2))
                     
-                    # Fill with ratings or defaults
                     rating_map = {(r['alternative_id'], r['criterion_id']): (r['rating_lower'], r['rating_upper']) for r in ratings}
                     
                     for i, alt in enumerate(self.alternatives):
@@ -390,24 +460,16 @@ class TOPSISTab(QWidget):
                             if (alt['id'], crit['id']) in rating_map:
                                 matrix[i, j] = rating_map[(alt['id'], crit['id'])]
                             else:
-                                # Default to Fair [4, 5] if missing
                                 matrix[i, j] = [4, 5]
                     
                     expert_matrices.append(matrix)
             
-            # Aggregate ratings
             aggregated_matrix = IntervalTOPSIS.aggregate_expert_ratings(expert_matrices)
-            
-            # Get weights
             weights = np.array([c['weight'] for c in self.criteria])
-            
-            # Get benefit/cost indicators
             is_benefit = np.array([c['is_benefit'] for c in self.criteria])
             
-            # Calculate TOPSIS
             CC, results = IntervalTOPSIS.rank_alternatives(aggregated_matrix, weights, is_benefit)
             
-            # Store results for the Results tab
             self.main_window.topsis_results = {
                 'closeness_coefficients': CC,
                 'ranking': results['ranking'],
@@ -415,13 +477,10 @@ class TOPSISTab(QWidget):
                 'distances_to_NIS': results['distances_to_NIS'],
                 'alternatives': self.alternatives,
                 'criteria': self.criteria,
-                'aggregated_matrix': aggregated_matrix # Optional: store for display
+                'aggregated_matrix': aggregated_matrix
             }
             
-            # Refresh results tab
             self.main_window.results_tab.load_data()
-            
-            # Switch to results tab
             self.main_window.tabs.setCurrentIndex(3)
             
             QMessageBox.information(self, "Success", f"TOPSIS ranking calculated successfully!\nAggregated ratings from {len(self.experts)} experts.")
